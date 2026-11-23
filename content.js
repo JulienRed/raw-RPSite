@@ -1,4 +1,4 @@
-/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 10:59:02.
+/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 10:59:34.
    Pour modifier le site, passe par le panel admin (étoile du logo). */
 window.RAWRP_CONTENT = {
   "meta": {
@@ -12,7 +12,7 @@ window.RAWRP_CONTENT = {
     "policeTexte": "DM Sans"
   },
   "marque": {
-    "image": "images/1795427926930-raw-logo-flottant.webp",
+    "image": "images/1795427970702-raw-logo-flottant.webp",
     "logo": "R★W",
     "sousTitre": "",
     "footer": "RAW★RP"
@@ -339,5 +339,5 @@ window.RAWRP_CONTENT = {
     "retour": "RETOUR EN HAUT",
     "boutonAdmin": true
   },
-  "_maj": 1795427941701
+  "_maj": 1795427974413
 };
