@@ -68,7 +68,7 @@ window.RAWRP_CONTENT = {
     "statutOuvert": "SERVEUR OUVERT",
     "lieu": "LOS SANTOS, SAN ANDREAS",
     "scene": "centre",
-    "image": ""
+    "image": "images/fond-los-santos.webp"
   },
   "univers": {
     "kicker": "EXPLORE LES POSSIBILITÉS",
@@ -307,5 +307,5 @@ window.RAWRP_CONTENT = {
     "retour": "RETOUR EN HAUT",
     "boutonAdmin": true
   },
-  "_maj": 1795405110918
+  "_maj": 1795405115311
 };

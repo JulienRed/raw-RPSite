@@ -40,7 +40,7 @@ window.RAWRP_DEFAULT = {
     statutOuvert: 'SERVEUR OUVERT',
     lieu: 'LOS SANTOS, SAN ANDREAS',
     scene: 'centre',
-    image: ''
+    image: 'images/fond-los-santos.webp'
   },
 
   univers: {
