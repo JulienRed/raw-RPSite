@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "indice": "Le plus beaux",
+  "motDePasse": {
+    "iter": 600000,
+    "salt": "qPPCi9S3XjtAy1P9zpPOeQ==",
+    "iv": "XOhLNTVlwuzxeVVv",
+    "ct": "bKLDYwdYq5qLB59LsBYXHMF0XhS14Lyvem8eNIqiaoDQt67NYwZXF87IZTVqDyLMmfEDS2IOrjE1h3OTzLZTkclQHHJn7jweyY8toSyL9aRienXr4yC3Ani8/KVGs4EEQCjVcK57f28GH/fL4g=="
+  },
+  "phrase": {
+    "iter": 600000,
+    "salt": "kqs4qTLvERnscLuj32uWVA==",
+    "iv": "2TXlRJlHOH4zNipo",
+    "ct": "fbVcN1g/AYjGxe9pgyjpJwVDZTIXC25yQ2pgHHrDAM4EsBsOn9wx4MnvZKhBvNcvoleznRbSbGSabvo6tEugAO1uZ5q4RY8r8TYsD7ThgoHRG8apAqf8SBaVoElbxD9Xla0Ab9G79ulIwHWZvQ=="
+  },
+  "maj": "2026-11-23T03:32:32.027Z"
+}
