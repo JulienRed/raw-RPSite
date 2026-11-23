@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#060b0a">
+  <title>RAW RP — Écris ta légende</title>
+  <meta name="description" content="RAW RP, une nouvelle expérience roleplay sur FiveM. Ta ville, tes règles, ton histoire.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="RAW RP — Écris ta légende">
+  <meta property="og:description" content="Une nouvelle expérience roleplay sur FiveM. Rejoins la communauté sur Discord.">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="images/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link id="fonts" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#app">Aller au contenu</a>
+
+  <!-- Rails latéraux : les étoiles « avis de recherche » s'allument en descendant -->
+  <div class="rail left" aria-hidden="true"><span id="railTxt">RAW <span>◆</span> RP</span></div>
+  <div class="rail right" aria-hidden="true"><div class="wanted" id="wanted"><i>★</i><i>★</i><i>★</i><i>★</i><i>★</i></div></div>
+
+  <header id="top">
+    <div class="brand" id="brand">
+      <a href="#accueil" class="brand-mark" aria-label="Retour à l'accueil">RAW</a>
+    </div>
+    <nav id="nav" aria-label="Navigation principale"></nav>
+    <a class="nav-cta" id="navCta" href="#rejoindre">NOUS REJOINDRE <span aria-hidden="true">↗</span></a>
+    <button class="menu" id="menu" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="nav"><span></span><span></span><span></span></button>
+  </header>
+
+  <!-- Tout le contenu est affiché par script.js à partir de content.js -->
+  <main id="app">
+    <noscript><p style="padding:120px 8%">Active JavaScript pour afficher le site RAW RP.</p></noscript>
+  </main>
+
+  <footer id="footer"></footer>
+
+  <dialog id="ruleDialog" aria-labelledby="dialogTitle">
+    <button class="close" id="closeDialog" aria-label="Fermer">✕</button>
+    <small id="dialogNum">RÈGLEMENT</small>
+    <h3 id="dialogTitle"></h3>
+    <p id="dialogText"></p>
+    <div class="dialog-actions">
+      <button class="btn ghost small" id="dialogPrev">← PRÉCÉDENTE</button>
+      <button class="btn primary small" id="understood">J'AI COMPRIS ✓</button>
+      <button class="btn ghost small" id="dialogNext">SUIVANTE →</button>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="defaults.js"></script>
+  <script src="content.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
