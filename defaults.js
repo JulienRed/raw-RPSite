@@ -40,7 +40,9 @@ window.RAWRP_DEFAULT = {
     statutOuvert: 'SERVEUR OUVERT',
     lieu: 'LOS SANTOS, SAN ANDREAS',
     scene: 'centre',
-    image: 'images/fond-los-santos.webp'
+    image: 'images/fond-los-santos.webp',
+    position: 'centre',   // partie de la photo gardée visible : gauche, centre, droite
+    assombrir: 0          // 0 à 80 : assombrit la photo de fond
   },
 
   univers: {
@@ -135,6 +137,9 @@ window.RAWRP_DEFAULT = {
     noteDev: 'Serveur en développement — adresse FiveM à venir.',
     noteOuvert: "Le bouton ouvre FiveM s'il est installé. Sinon, appuie sur F8 dans FiveM et colle la commande copiée."
   },
+
+  // Pages en plus (créées depuis le panel admin) : { slug, titre, sousTitre, image, menu, blocs: [...] }
+  pages: [],
 
   footer: {
     texte: 'RAW RP — Serveur de fans, non affilié à Rockstar Games ni à Take-Two Interactive.',

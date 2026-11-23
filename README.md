@@ -9,8 +9,15 @@ Site en ligne : https://julienred.github.io/raw-RPSite/
 3. Modifie ce que tu veux : l'aperçu change en direct.
 4. Clique sur **Publier** : le site est mis à jour **pour tout le monde** d'ici 1 à 2 minutes.
 
+Onglets utiles :
+- **Arrière-plan** : change la photo de fond de l'accueil en un clic (envoyer une photo, ou « Images du site… » pour reprendre une image déjà en ligne), choisis la partie visible et assombris-la si besoin.
+- **Blocs de l'accueil** : toutes les parties de l'accueil dans l'ordre. « Ajouter un bloc » : texte, image, texte + image, liste, cartes, galerie, boutons, annonce, chiffres clés, questions/réponses, vidéo YouTube, espace. Flèches ↑ ↓ pour déplacer, ✕ pour supprimer, case à cocher pour masquer.
+- **Pages** : crée des pages en plus (Staff, Recrutement…) remplies de blocs. Adresse : `…/#p-nom-de-la-page`, à utiliser dans les liens des boutons.
+
+Si le site a été modifié ailleurs depuis l'ouverture du panel, « Publier » te prévient avant d'écraser quoi que ce soit.
+
 Bouton **Déconnexion** en haut à droite. Flèches ↶ ↷ pour annuler. Ctrl+S pour publier.
-Mise en forme : `*texte*` = en couleur, `**texte**` = gras.
+Mise en forme : `*texte*` = en couleur, `**texte**` = gras, `[texte](https://…)` = lien, ligne vide = nouveau paragraphe.
 
 ## Première connexion (une seule fois)
 Le panel demande un **jeton GitHub** (il permet de publier), puis tu choisis :

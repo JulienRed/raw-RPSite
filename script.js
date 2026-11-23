@@ -19,10 +19,15 @@ const $$ = (s) => document.querySelectorAll(s);
 const pad = (n) => String(n).padStart(2, '0');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Mise en forme simple : *texte* = en couleur, **texte** = gras, retour à la ligne = <br>
+const linkOk = (u) => /^(https?:|#|mailto:|fivem:|images\/)/i.test(u);
 const fmt = (s) => esc(s)
+  .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => `<a href="${linkOk(u) ? u : '#'}"${/^https?:/i.test(u) ? ' target="_blank" rel="noopener"' : ''}>${t}</a>`)
   .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
   .replace(/\*([^*]+)\*/g, '<em>$1</em>')
   .replace(/\n/g, '<br>');
+const para = (s) => String(s || '').split(/\n\s*\n/).filter((p) => p.trim()).map((p) => `<p>${fmt(p.trim())}</p>`).join('');
+const slugify = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
+const isCustom = (s) => /^b-/.test(s.id || '') && s.bloc && typeof s.bloc === 'object';
 const src = (p) => esc(PREV[p] || p);
 const safeUrl = (u) => /^(https?:|fivem:|mailto:|#|images\/|data:image\/)/i.test(u || '') ? u : '#';
 
@@ -52,7 +57,8 @@ function normalize(raw) {
   const c = merge(D, raw || {});
   // ajoute les sections qui manqueraient
   D.sections.forEach((s) => { if (!c.sections.some((x) => x.id === s.id)) c.sections.push({ ...s }); });
-  c.sections = c.sections.filter((s) => D.sections.some((d) => d.id === s.id));
+  c.sections = c.sections.filter((s) => D.sections.some((d) => d.id === s.id) || isCustom(s));
+  c.pages = Array.isArray(c.pages) ? c.pages.filter((p) => p && typeof p === 'object') : [];
   return c;
 }
 
@@ -305,10 +311,42 @@ const RENDER = {
   }
 };
 
+/* =========================================================
+   Blocs ajoutés depuis le panel (accueil et pages)
+   ========================================================= */
+const ytId = (u) => { const m = String(u || '').match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/); return m ? m[1] : ''; };
+const btnHTML = (t, u, ghost) => t ? `<a class="btn ${ghost ? 'ghost' : 'primary'}" href="${esc(safeUrl(u || '#'))}"${/^https?:/i.test(u || '') ? ' target="_blank" rel="noopener"' : ''}>${esc(t)} <span aria-hidden="true">↗</span></a>` : '';
+const T = (t) => (t ? `<h2 class="blk-title">${fmt(t)}</h2>` : '');
+const BLOC = {
+  texte: (b) => `<div class="align-${b.align === 'centre' ? 'centre' : 'gauche'}">${T(b.titre)}<div class="prose">${para(b.texte)}</div></div>`,
+  image: (b) => (b.src ? `<figure class="blk-fig${b.taille === 'pleine' ? ' full' : ''}"><img src="${src(b.src)}" alt="${esc(b.legende)}" loading="lazy">${b.legende ? `<figcaption>${esc(b.legende)}</figcaption>` : ''}</figure>` : ''),
+  texteImage: (b) => `<div class="ti${b.cote === 'gauche' ? ' img-left' : ''}"><div>${T(b.titre)}<div class="prose">${para(b.texte)}</div>${btnHTML(b.bouton, b.lien)}</div>${b.src ? `<img src="${src(b.src)}" alt="" loading="lazy">` : ''}</div>`,
+  liste: (b) => { const tag = b.style === 'numeros' ? 'ol' : 'ul'; return `${T(b.titre)}<${tag} class="lst lst-${esc(b.style || 'puces')}">${(b.items || []).map((i) => `<li>${fmt(i)}</li>`).join('')}</${tag}>`; },
+  cartes: (b) => `${T(b.titre)}${b.intro ? `<p class="blk-intro">${fmt(b.intro)}</p>` : ''}<div class="cards">${(b.cartes || []).map((c) => `<article class="card">${c.src ? `<img src="${src(c.src)}" alt="" loading="lazy">` : ''}<div><h3>${fmt(c.titre)}</h3><p>${fmt(c.texte)}</p>${btnHTML(c.bouton, c.lien, true)}</div></article>`).join('')}</div>`,
+  galerie: (b) => `${T(b.titre)}<div class="grid-gal">${(b.images || []).filter((i) => i.src).map((i) => `<figure><img src="${src(i.src)}" alt="${esc(i.legende)}" loading="lazy">${i.legende ? `<figcaption>${esc(i.legende)}</figcaption>` : ''}</figure>`).join('')}</div>`,
+  bouton: (b) => `<div class="cta">${T(b.titre)}${b.texte ? `<p class="blk-intro">${fmt(b.texte)}</p>` : ''}<div class="actions">${btnHTML(b.bouton, b.lien)}${btnHTML(b.bouton2, b.lien2, true)}</div></div>`,
+  annonce: (b) => `<div class="annonce annonce-${esc(b.style || 'accent')}"><span class="annonce-ic" aria-hidden="true">${b.style === 'alerte' ? '!' : b.style === 'info' ? 'i' : '★'}</span><div>${b.titre ? `<b>${esc(b.titre)}</b>` : ''}<p>${fmt(b.texte)}</p></div></div>`,
+  chiffres: (b) => `${T(b.titre)}<div class="stats">${(b.chiffres || []).map((c) => `<div><b>${esc(c.valeur)}</b><span>${esc(c.label)}</span></div>`).join('')}</div>`,
+  faq: (b) => `${T(b.titre)}<div class="faq">${(b.questions || []).map((f) => `<details><summary>${esc(f.q)}</summary><p>${fmt(f.r)}</p></details>`).join('')}</div>`,
+  video: (b) => { const id = ytId(b.url); return `${T(b.titre)}${id ? `<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/${id}" title="${esc(b.titre || 'Vidéo')}" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>` : ''}`; },
+  espace: (b) => `<div class="spacer sp-${esc(b.taille || 'moyen')}">${b.ligne ? '<hr>' : ''}</div>`
+};
+function renderBloc(b, id) {
+  if (!b || !BLOC[b.type]) return '';
+  return `<section class="blk blk-${b.type} fond-${esc(b.fond || 'aucun')}" id="${esc(id)}"><div class="blk-in">${BLOC[b.type](b)}</div></section>`;
+}
+function renderPage(p) {
+  const blocs = (p.blocs || []).map((b, i) => renderBloc(b, 'pb-' + i)).join('');
+  return `<section class="page-head" id="accueil">${p.image ? `<img class="city" src="${src(p.image)}" alt="">` : ''}
+    <div class="page-head-in"><a class="back" href="#accueil">← ${esc(C.nav.accueil)}</a><h1>${fmt(p.titre)}</h1>${p.sousTitre ? `<p>${fmt(p.sousTitre)}</p>` : ''}</div></section>
+    ${blocs || '<section class="blk"><div class="blk-in"><p class="blk-intro">Cette page est encore vide.</p></div></section>'}`;
+}
+
 function renderHero(h, firstId) {
   const live = !!(C.liens.fivem || '').trim();
   return `<section class="hero" id="accueil">
-    ${h.image ? `<img class="city" src="${src(h.image)}" alt="">` : '<svg class="city" id="heroScene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true"></svg>'}
+    ${h.image ? `<img class="city" src="${src(h.image)}" alt="" style="object-position:${{ gauche: '20%', droite: '80%' }[h.position] || '50%'} center">` : '<svg class="city" id="heroScene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true"></svg>'}
+    ${+h.assombrir > 0 ? `<div class="dim" style="opacity:${Math.min(+h.assombrir, 90) / 100}"></div>` : ''}
     <div class="noise" aria-hidden="true"></div>
     <div class="hero-content">
       <div class="eyebrow"><span class="dot"></span> ${esc(h.bandeau)}</div>
@@ -345,18 +383,51 @@ function render(content) {
   else brand = `<a class="brand-mark" href="#accueil">${esc(C.marque.logo)}</a>${starA}`;
   $('#brand').innerHTML = brand + `<small>${esc(C.marque.sousTitre)}</small>`;
   const vis = C.sections.filter((s) => s.visible);
-  $('#nav').innerHTML = [`<a href="#accueil">${esc(C.nav.accueil)}</a>`, ...vis.map((s) => `<a href="#${s.id}">${esc(s.nav)}</a>`)].join('');
+  const pages = C.pages.filter((p) => p.menu !== false);
+  $('#nav').innerHTML = [`<a href="#accueil">${esc(C.nav.accueil)}</a>`,
+    ...vis.filter((s) => !isCustom(s) || (s.nav || '').trim()).map((s) => `<a href="#${s.id}">${esc(s.nav)}</a>`),
+    ...pages.map((p) => `<a href="#p-${slugify(p.slug || p.titre)}">${esc(p.titre)}</a>`)].join('');
   const joinVisible = vis.some((s) => s.id === 'rejoindre');
   $('#navCta').hidden = !joinVisible;
   $('#navCta').innerHTML = `${esc(C.nav.cta)} <span aria-hidden="true">↗</span>`;
-
-  // contenu
-  $('#app').innerHTML = renderHero(C.hero, vis[0] && vis[0].id) + vis.map((s, i) => RENDER[s.id](C[s.id], i + 1)).join('');
   $('#footer').innerHTML = `<div class="footer-logo">${logoImg || esc(C.marque.footer).replace(/★/g, '<span>★</span>')}</div><span>© ${new Date().getFullYear()} ${fmt(C.footer.texte)}</span><a href="#accueil">${esc(C.footer.retour)} ↑</a>`;
-
-  if (!C.hero.image) drawScene($('#heroScene'), SCENES[C.hero.scene] ? C.hero.scene : 'centre', 11);
-  bind(vis);
+  view = null;
+  route(true);
 }
+
+/* ---------- Pages : #p-nom-de-page ---------- */
+let view = null;
+function currentPage() {
+  const m = location.hash.match(/^#p-([a-z0-9-]+)/);
+  return m ? C.pages.find((p) => slugify(p.slug || p.titre) === m[1]) : null;
+}
+function route(fromRender) {
+  const p = currentPage();
+  const want = p ? 'p:' + slugify(p.slug || p.titre) : 'home';
+  const changedView = want !== view;
+  view = want;
+  if (p) {
+    if (changedView || fromRender) {
+      timers.forEach(clearInterval); timers = [];
+      if (spy) spy.disconnect();
+      $('#app').innerHTML = renderPage(p);
+      document.body.classList.add('on-page');
+      $$('#nav a').forEach((a) => { a.classList.toggle('active', a.getAttribute('href') === location.hash); a.onclick = () => setMenu(false); });
+      if (!fromRender) scrollTo(0, 0);
+    }
+    return;
+  }
+  document.body.classList.remove('on-page');
+  if (changedView || fromRender) {
+    const vis = C.sections.filter((s) => s.visible);
+    let n = 0;
+    $('#app').innerHTML = renderHero(C.hero, vis[0] && vis[0].id) + vis.map((s) => (isCustom(s) ? renderBloc(s.bloc, s.id) : RENDER[s.id](C[s.id], ++n))).join('');
+    if (!C.hero.image) drawScene($('#heroScene'), SCENES[C.hero.scene] ? C.hero.scene : 'centre', 11);
+    bind(vis);
+  }
+  if (!fromRender && location.hash) { const el = document.getElementById(location.hash.slice(1)); if (el) el.scrollIntoView(); }
+}
+addEventListener('hashchange', () => route(false));
 
 /* =========================================================
    Interactions (rebranchées à chaque affichage)
@@ -507,8 +578,8 @@ if (PREVIEW) {
       scrollTo(0, y);
     }
     if (d.type === 'rawrp:goto') {
-      const el = document.getElementById(d.id);
-      if (el) el.scrollIntoView();
+      if (location.hash === '#' + d.id) route(false);
+      else location.hash = '#' + d.id;
     }
   });
   render(normalize(null));
@@ -523,7 +594,7 @@ if (PREVIEW) {
     } catch (e) {}
     render(normalize(data));
     onScroll();
-    if (location.hash) { const el = document.querySelector(location.hash); if (el) el.scrollIntoView(); }
+    if (location.hash && !currentPage()) { const el = document.getElementById(location.hash.slice(1)); if (el) el.scrollIntoView(); }
   };
   const sc = document.createElement('script');
   sc.src = 'content.js?v=' + Date.now();

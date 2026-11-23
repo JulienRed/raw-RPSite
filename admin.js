@@ -32,9 +32,13 @@ function merge(base, over) {
 function normalize(raw) {
   const c = merge(clone(D), raw || {});
   D.sections.forEach((s) => { if (!c.sections.some((x) => x.id === s.id)) c.sections.push({ ...s }); });
-  c.sections = c.sections.filter((s) => D.sections.some((d) => d.id === s.id));
+  c.sections = c.sections.filter((s) => D.sections.some((d) => d.id === s.id) || isCustom(s));
+  c.pages = Array.isArray(c.pages) ? c.pages.filter((p) => p && typeof p === 'object') : [];
   return c;
 }
+const isCustom = (s) => /^b-/.test(s.id || '') && s.bloc && typeof s.bloc === 'object';
+const slugify = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
+const rid = () => Math.random().toString(36).slice(2, 8);
 const getP = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 const setP = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
 
@@ -53,6 +57,51 @@ const headFields = (p) => [
   { k: p + '.titre', l: 'Grand titre', t: 'textarea', rows: 2, h: TITRE_HINT },
   { k: p + '.intro', l: 'Texte d\'introduction', t: 'textarea', h: TEXT_HINT }
 ];
+
+/* ---------- Blocs (type Wix) ---------- */
+const PROSE_HINT = 'Ligne vide = nouveau paragraphe. **gras**, *couleur*, [texte du lien](https://…).';
+const LIEN_HINT = 'https://… pour un site, #rejoindre pour une section, #p-nom-de-la-page pour une page.';
+const FOND_F = { k: 'fond', l: 'Fond du bloc', t: 'select', o: [['aucun', 'Normal'], ['sombre', 'Gris foncé'], ['accent', 'Teinté couleur principale']] };
+const TITRE_F = { k: 'titre', l: 'Titre (facultatif)', t: 'textarea', rows: 2, h: TITRE_HINT };
+const BLOCS = {
+  texte: { label: 'Texte', neu: { titre: 'NOUVEAU TITRE', texte: 'Écris ton texte ici.\n\nUne ligne vide crée un nouveau paragraphe.', align: 'gauche' }, f: [
+    TITRE_F, { k: 'texte', l: 'Texte', t: 'textarea', rows: 7, h: PROSE_HINT }, { k: 'align', l: 'Alignement', t: 'select', o: [['gauche', 'À gauche'], ['centre', 'Centré']] }] },
+  image: { label: 'Image', neu: { src: '', legende: '', taille: 'contenue' }, f: [
+    { k: 'src', l: 'Image', t: 'image' }, { k: 'legende', l: 'Légende (facultatif)', t: 'text' }, { k: 'taille', l: 'Largeur', t: 'select', o: [['contenue', 'Normale'], ['pleine', 'Toute la largeur de l\'écran']] }] },
+  texteImage: { label: 'Texte + image', neu: { titre: 'TITRE', texte: 'Ton texte à côté de l\'image.', src: '', cote: 'droite', bouton: '', lien: '' }, f: [
+    TITRE_F, { k: 'texte', l: 'Texte', t: 'textarea', rows: 6, h: PROSE_HINT }, { k: 'src', l: 'Image', t: 'image' },
+    { k: 'cote', l: 'Image à', t: 'select', o: [['droite', 'Droite'], ['gauche', 'Gauche']] },
+    { k: 'bouton', l: 'Texte du bouton (facultatif)', t: 'text' }, { k: 'lien', l: 'Lien du bouton', t: 'text', h: LIEN_HINT }] },
+  liste: { label: 'Liste', neu: { titre: 'MA LISTE', style: 'puces', items: ['Premier élément', 'Deuxième élément', 'Troisième élément'] }, f: [
+    TITRE_F, { k: 'style', l: 'Style', t: 'select', o: [['puces', 'Puces ◆'], ['numeros', 'Numérotée 01, 02…'], ['coches', 'Coches ✓']] },
+    { k: 'items', l: 'Éléments (une ligne = un élément)', t: 'lines', rows: 6 }] },
+  cartes: { label: 'Cartes', neu: { titre: 'TITRE', intro: '', cartes: [{ titre: 'CARTE 1', texte: 'Texte de la carte.', src: '', bouton: '', lien: '' }, { titre: 'CARTE 2', texte: 'Texte de la carte.', src: '', bouton: '', lien: '' }, { titre: 'CARTE 3', texte: 'Texte de la carte.', src: '', bouton: '', lien: '' }] }, f: [
+    TITRE_F, { k: 'intro', l: 'Introduction (facultatif)', t: 'textarea' },
+    { k: 'cartes', t: 'list', title: 'titre', add: 'Ajouter une carte', neu: { titre: 'NOUVELLE CARTE', texte: '', src: '', bouton: '', lien: '' }, item: [
+      { k: 'titre', l: 'Titre', t: 'text' }, { k: 'texte', l: 'Texte', t: 'textarea' }, { k: 'src', l: 'Image (facultatif)', t: 'image' },
+      { k: 'bouton', l: 'Bouton (facultatif)', t: 'text' }, { k: 'lien', l: 'Lien du bouton', t: 'text', h: LIEN_HINT }] }] },
+  galerie: { label: 'Galerie d\'images', neu: { titre: 'EN IMAGES', images: [] }, f: [
+    TITRE_F, { k: 'images', t: 'list', title: 'legende', add: 'Ajouter une image', neu: { src: '', legende: '' }, item: [{ k: 'src', l: 'Image', t: 'image' }, { k: 'legende', l: 'Légende', t: 'text' }] }] },
+  bouton: { label: 'Boutons', neu: { titre: 'PRÊT À JOUER ?', texte: '', bouton: 'REJOINDRE LE DISCORD', lien: '#rejoindre', bouton2: '', lien2: '' }, f: [
+    TITRE_F, { k: 'texte', l: 'Texte (facultatif)', t: 'textarea' },
+    { k: 'bouton', l: 'Bouton 1', t: 'text' }, { k: 'lien', l: 'Lien du bouton 1', t: 'text', h: LIEN_HINT },
+    { k: 'bouton2', l: 'Bouton 2 (facultatif)', t: 'text' }, { k: 'lien2', l: 'Lien du bouton 2', t: 'text' }] },
+  annonce: { label: 'Annonce', neu: { style: 'accent', titre: 'ANNONCE', texte: 'Une info importante pour les joueurs.' }, f: [
+    { k: 'style', l: 'Style', t: 'select', o: [['accent', 'Couleur principale ★'], ['alerte', 'Alerte rouge !'], ['info', 'Info discrète']] },
+    { k: 'titre', l: 'Titre (facultatif)', t: 'text' }, { k: 'texte', l: 'Texte', t: 'textarea', h: PROSE_HINT }] },
+  chiffres: { label: 'Chiffres clés', neu: { titre: '', chiffres: [{ valeur: '00', label: 'Ton premier chiffre' }, { valeur: '00', label: 'Ton deuxième chiffre' }, { valeur: '00', label: 'Ton troisième chiffre' }] }, f: [
+    TITRE_F, { k: 'chiffres', t: 'list', title: (it) => `${it.valeur || ''} ${it.label || ''}`.trim() || 'Chiffre', add: 'Ajouter un chiffre', neu: { valeur: '00', label: 'NOUVEAU' }, item: [{ k: 'valeur', l: 'Chiffre', t: 'text' }, { k: 'label', l: 'Légende', t: 'text' }] }] },
+  faq: { label: 'Questions / réponses', neu: { titre: 'QUESTIONS', questions: [{ q: 'Ta question ?', r: 'La réponse.' }] }, f: [
+    TITRE_F, { k: 'questions', t: 'list', title: 'q', add: 'Ajouter une question', neu: { q: 'Nouvelle question ?', r: '' }, item: [{ k: 'q', l: 'Question', t: 'text' }, { k: 'r', l: 'Réponse', t: 'textarea' }] }] },
+  video: { label: 'Vidéo YouTube', neu: { titre: '', url: '' }, f: [
+    TITRE_F, { k: 'url', l: 'Lien de la vidéo YouTube', t: 'url', h: 'Ex. : https://www.youtube.com/watch?v=… ou https://youtu.be/…' }] },
+  espace: { label: 'Espace / séparateur', neu: { taille: 'moyen', ligne: true }, f: [
+    { k: 'taille', l: 'Hauteur', t: 'select', o: [['petit', 'Petite'], ['moyen', 'Moyenne'], ['grand', 'Grande']] }, { k: 'ligne', l: 'Afficher une ligne', t: 'toggle' }] }
+};
+const blocFields = (type, prefix = '') => [...(BLOCS[type] ? BLOCS[type].f : []), ...(type === 'espace' ? [] : [FOND_F])].map((f) => (prefix ? { ...f, k: prefix + f.k } : f));
+const blocTitle = (b) => { const t = (b && (b.titre || b.legende || b.texte || '')).toString().replace(/[*\n]+/g, ' ').trim(); return `${BLOCS[b && b.type] ? BLOCS[b.type].label : 'Bloc'}${t ? ' · ' + t.slice(0, 40) : ''}`; };
+const newBloc = (type) => ({ type, fond: 'aucun', ...clone(BLOCS[type].neu) });
+const BLOC_TYPES = Object.keys(BLOCS).map((type) => ({ type, label: BLOCS[type].label }));
 
 const TABS = [
   { id: 'general', label: 'Général', goto: 'accueil', lead: 'Nom, couleurs, polices et liens utilisés partout sur le site.', fields: [
@@ -79,11 +128,33 @@ const TABS = [
     { k: 'footer.retour', l: 'Lien « Retour en haut »', t: 'text' },
     { k: 'footer.boutonAdmin', l: 'Étoile d\'accès au panel admin dans le logo (en haut du site)', t: 'toggle', h: 'Si tu la désactives, le panel reste accessible en ouvrant admin.html.' }
   ] },
-  { id: 'sections', label: 'Sections', lead: 'Choisis les sections affichées, leur ordre (flèches) et leur nom dans le menu. L\'accueil reste toujours en premier.', fields: [
-    { k: 'sections', t: 'list', fixed: true, title: (it) => SECTION_NAMES[it.id] + (it.visible ? '' : ' · masquée'), item: [
-      { k: 'visible', l: 'Afficher cette section', t: 'toggle' },
-      { k: 'nav', l: 'Nom dans le menu', t: 'text' }
-    ] }
+  { id: 'fond', label: 'Arrière-plan', goto: 'accueil', lead: 'La photo derrière le grand titre de l\'accueil. Change-la en un clic.', fields: [
+    { k: 'hero.image', l: 'Photo d\'arrière-plan', t: 'image', big: true, h: 'Photo en paysage (capture du jeu, etc.). Elle est réduite automatiquement avant l\'envoi.' },
+    { k: 'hero.position', l: 'Partie de la photo à garder visible (surtout sur téléphone)', t: 'select', o: [['gauche', 'Gauche'], ['centre', 'Centre'], ['droite', 'Droite']] },
+    { k: 'hero.assombrir', l: 'Assombrir la photo', t: 'range', min: 0, max: 80, step: 5, unit: ' %', h: 'Monte si le texte est difficile à lire.' },
+    { g: 'Sans photo' },
+    { k: 'hero.scene', l: 'Illustration dessinée (utilisée si tu retires la photo)', t: 'select', o: SCENE_OPTS }
+  ] },
+  { id: 'sections', label: 'Blocs de l\'accueil', goto: 'accueil', lead: 'Toutes les parties de la page d\'accueil, dans l\'ordre. Ajoute des blocs (texte, image, liste…), déplace-les avec les flèches, masque ou supprime-les.', fields: [
+    { k: 'sections', t: 'list', title: (it) => (isCustom(it) ? blocTitle(it.bloc) : SECTION_NAMES[it.id]) + (it.visible ? '' : ' · masquée'),
+      canDel: (it) => isCustom(it),
+      itemFn: (it) => (isCustom(it)
+        ? [{ k: 'visible', l: 'Afficher ce bloc', t: 'toggle' }, { k: 'nav', l: 'Nom dans le menu (vide = pas dans le menu)', t: 'text' }, ...blocFields(it.bloc.type, 'bloc.')]
+        : [{ k: 'visible', l: 'Afficher cette section', t: 'toggle' }, { k: 'nav', l: 'Nom dans le menu', t: 'text' }, { tip: 'Le contenu de cette section se modifie dans son onglet à gauche.' }]),
+      types: BLOC_TYPES, neuType: (type) => ({ id: 'b-' + rid(), nav: '', visible: true, bloc: newBloc(type) }) }
+  ] },
+  { id: 'pages', label: 'Pages', lead: 'Crée des pages en plus (Staff, Recrutement, Lore…) et remplis-les avec des blocs. Chaque page a sa propre adresse et peut apparaître dans le menu.', fields: [
+    { k: 'pages', t: 'list', title: (it) => it.titre || 'Page sans titre', add: 'Créer une page',
+      neu: () => ({ slug: 'page-' + rid(), titre: 'NOUVELLE PAGE', sousTitre: '', image: '', menu: true, blocs: [newBloc('texte')] }),
+      item: [
+        { k: 'titre', l: 'Titre de la page', t: 'text' },
+        { k: 'slug', l: 'Adresse de la page', t: 'text', h: 'Lettres, chiffres et tirets. La page sera sur …/#p-ADRESSE (lien à utiliser dans les boutons).' },
+        { k: 'menu', l: 'Afficher la page dans le menu', t: 'toggle' },
+        { k: 'sousTitre', l: 'Sous-titre (facultatif)', t: 'textarea' },
+        { k: 'image', l: 'Image d\'en-tête (facultatif)', t: 'image' },
+        { g: 'Contenu de la page' },
+        { k: 'blocs', t: 'list', title: (it) => blocTitle(it), itemFn: (it) => blocFields(it.type), types: BLOC_TYPES, neuType: (type) => newBloc(type) }
+      ] }
   ] },
   { id: 'accueil', label: 'Accueil', goto: 'accueil', lead: 'Le grand écran d\'ouverture du site.', fields: [
     { k: 'hero.bandeau', l: 'Petit texte au-dessus du titre', t: 'text' },
@@ -94,9 +165,7 @@ const TABS = [
     { k: 'hero.statutDev', l: 'Statut avant l\'ouverture', t: 'text' },
     { k: 'hero.statutOuvert', l: 'Statut quand l\'adresse FiveM est remplie', t: 'text' },
     { k: 'hero.lieu', l: 'Lieu', t: 'text' },
-    { g: 'Fond' },
-    { k: 'hero.scene', l: 'Illustration dessinée', t: 'select', o: SCENE_OPTS },
-    { k: 'hero.image', l: 'Ou ta propre image', t: 'image', h: 'Si tu mets une image, elle remplace l\'illustration. Format paysage conseillé.' }
+    { tip: 'La photo de fond se change dans l\'onglet « Arrière-plan ».' }
   ] },
   { id: 'univers', label: 'Univers', goto: 'univers', fields: [...headFields('univers'),
     { g: 'Cartes' },
@@ -539,13 +608,15 @@ function fieldHTML(f, base) {
       return `<label class="f" for="${id}">${lab}<select id="${id}" ${dp} data-t="text">${f.o.map(([val, txt]) => `<option value="${esc(val)}"${val === v ? ' selected' : ''}>${esc(txt)}</option>`).join('')}</select>${hint}</label>`;
     case 'toggle':
       return `<div class="f"><label class="toggle"><input type="checkbox" ${dp} data-t="bool"${v ? ' checked' : ''}> ${esc(f.l)}</label>${hint}</div>`;
+    case 'range':
+      return `<label class="f" for="${id}">${lab}<span class="range"><input id="${id}" type="range" min="${f.min}" max="${f.max}" step="${f.step || 1}" ${dp} data-t="num" value="${esc(v || 0)}"><output>${esc(v || 0)}${esc(f.unit || '')}</output></span>${hint}</label>`;
     case 'datetime':
       return `<label class="f" for="${id}">${lab}<input id="${id}" type="datetime-local" ${dp} data-t="text" value="${esc(v)}">${hint}</label>`;
     case 'image': {
       const url = v ? imgUrl(v) : '';
-      return `<div class="f">${lab}<div class="img">
+      return `<div class="f">${lab}<div class="img${f.big ? ' big' : ''}">
         <div class="thumb"${url ? ` style="background-image:url('${esc(url)}')"` : ''}>${url ? '' : 'Aucune image'}</div>
-        <div class="acts"><label class="btn small">${v ? 'Changer…' : 'Choisir…'}<input type="file" accept="image/*" data-up="${esc(p)}" hidden></label>${v ? `<button type="button" class="btn small" data-act="imgdel" ${dp}>Retirer</button>` : ''}</div>
+        <div class="acts"><label class="btn small">${v ? 'Changer…' : 'Choisir…'}<input type="file" accept="image/*" data-up="${esc(p)}" hidden></label><button type="button" class="btn small" data-act="imgpick" ${dp}>Images du site…</button>${v ? `<button type="button" class="btn small" data-act="imgdel" ${dp}>Retirer</button>` : ''}</div>
         ${v ? `<div class="path">${isData(v) ? 'Image intégrée au contenu' : esc(v)}</div>` : ''}</div>${hint}</div>`;
     }
     case 'list': {
@@ -557,12 +628,15 @@ function fieldHTML(f, base) {
           <summary><span class="n">${pad(i + 1)}</span><span class="t">${esc(titleOf(f, it))}</span>
             <button type="button" class="mini" data-act="up" ${dp} data-i="${i}" aria-label="Monter"${i === 0 ? ' disabled' : ''}>↑</button>
             <button type="button" class="mini" data-act="down" ${dp} data-i="${i}" aria-label="Descendre"${i === arr.length - 1 ? ' disabled' : ''}>↓</button>
-            ${f.fixed ? '' : `<button type="button" class="mini del" data-act="del" ${dp} data-i="${i}" aria-label="Supprimer">✕</button>`}
+            ${(f.canDel ? f.canDel(it) : !f.fixed) ? `<button type="button" class="mini del" data-act="del" ${dp} data-i="${i}" aria-label="Supprimer">✕</button>` : '<span class="mini-sp"></span>'}
           </summary>
-          <div class="body">${f.item.map((sf) => fieldHTML(sf, ip)).join('')}</div>
+          <div class="body">${(f.itemFn ? f.itemFn(it) : f.item).map((sf) => fieldHTML(sf, ip)).join('')}</div>
         </details>`;
       }).join('');
-      return `<div class="list">${items || '<p class="tip">Aucun élément pour l\'instant.</p>'}</div>${f.fixed ? '' : `<button type="button" class="btn add" data-act="add" ${dp}>+ ${esc(f.add)}</button>`}`;
+      const addUI = f.types
+        ? `<div class="add-types"><span>Ajouter un bloc :</span>${f.types.map((t) => `<button type="button" class="btn small add-t" data-act="add" data-type="${t.type}" ${dp}>+ ${esc(t.label)}</button>`).join('')}</div>`
+        : (f.fixed ? '' : `<button type="button" class="btn add" data-act="add" ${dp}>+ ${esc(f.add)}</button>`);
+      return `<div class="list">${items || '<p class="tip">Rien pour l\'instant.</p>'}</div>${addUI}`;
     }
   }
   return '';
@@ -644,6 +718,7 @@ function onField(el) {
   let v;
   switch (el.dataset.t) {
     case 'bool': v = el.checked; break;
+    case 'num': v = Number(el.value); { const o = el.parentElement.querySelector('output'); if (o) o.textContent = el.value + (o.textContent.match(/\D+$/) || [''])[0]; } break;
     case 'lines': v = el.value.split('\n').map((s) => s.trim()).filter(Boolean); break;
     case 'color':
       v = el.value.trim();
@@ -706,12 +781,31 @@ async function onUpload(input) {
 }
 
 
+/* ---------- Choisir une image déjà envoyée sur le site ---------- */
+async function pickImage(p) {
+  const m = $('#modal');
+  m.innerHTML = '<div class="modal-card"><h3>Images du site</h3><p class="sub">Chargement…</p></div>';
+  m.showModal();
+  let list = [];
+  try {
+    const files = await gh(`/contents/images${ref()}`);
+    list = files.filter((f) => /\.(webp|jpe?g|png|gif|avif)$/i.test(f.name) && !/^favicon/i.test(f.name)).map((f) => f.path);
+  } catch (e) { if (e.status !== 404) { m.querySelector('.sub').textContent = e.message; return; } }
+  Object.keys(previews).forEach((k) => { if (!list.includes(k)) list.unshift(k); });
+  m.innerHTML = `<div class="modal-card"><h3>Images du site</h3>
+    ${list.length ? `<div class="pick">${list.map((path) => `<button type="button" data-path="${esc(path)}" title="${esc(path)}"><img src="${esc(previews[path] || path)}" alt="" loading="lazy"></button>`).join('')}</div>` : '<p class="sub">Aucune image pour l\'instant. Utilise « Choisir… » pour en envoyer une.</p>'}
+    <div class="modal-actions"><button type="button" class="btn" id="pkClose">Fermer</button></div></div>`;
+  $('#pkClose').onclick = () => m.close();
+  m.querySelectorAll('[data-path]').forEach((b) => (b.onclick = () => { setP(draft, p, b.dataset.path); m.close(); changed(true); toast('Image choisie. Pense à publier.'); }));
+}
+
 /* ---------- Boutons des listes ---------- */
 function onAction(b) {
   const p = b.dataset.p, i = +b.dataset.i, arr = getP(draft, p);
   switch (b.dataset.act) {
     case 'add': {
-      arr.push(clone(listDefs[p].neu));
+      const f = listDefs[p];
+      arr.push(f.types ? f.neuType(b.dataset.type) : (typeof f.neu === 'function' ? f.neu() : clone(f.neu)));
       openItems.add(`${p}.${arr.length - 1}`);
       changed(true);
       const last = $$(`.item[data-item="${CSS.escape(`${p}.${arr.length - 1}`)}"]`)[0];
@@ -737,6 +831,9 @@ function onAction(b) {
     case 'imgdel':
       setP(draft, p, '');
       changed(true);
+      break;
+    case 'imgpick':
+      pickImage(p);
       break;
   }
 }
@@ -772,7 +869,13 @@ async function publish() {
   btn.disabled = true; btn.textContent = 'Publication…';
   const out = { ...clone(draft), _maj: Date.now() };
   try {
-    const r = await putFile('content.js', toB64(contentFile(out)), 'Mise à jour du site depuis le panel admin', sha);
+    let cur = null;
+    try { cur = await gh(`/contents/content.js${ref()}`); } catch (e) { if (e.status !== 404) throw e; }
+    if (cur && sha && cur.sha !== sha && !confirm('Attention : le site a été modifié ailleurs depuis que tu as ouvert le panel (sur un autre appareil, ou par Claude).\n\nOK = publier quand même et REMPLACER ces changements.\nAnnuler = ne rien publier. Tu pourras recharger le panel (F5) pour récupérer la dernière version.')) {
+      toast('Rien n\'a été publié. Recharge le panel pour récupérer la dernière version.', true);
+      return;
+    }
+    const r = await gh('/contents/content.js', { method: 'PUT', body: { message: 'Mise à jour du site depuis le panel admin', content: toB64(contentFile(out)), branch: REPO.branch, ...(cur ? { sha: cur.sha } : {}) } });
     sha = r.content.sha;
     store.set(K_CONTENT, JSON.stringify(out));   // ce navigateur voit le changement tout de suite
     saved = JSON.stringify(draft);
@@ -876,6 +979,11 @@ ed.addEventListener('toggle', (e) => {
   const d = e.target;
   if (!d.classList || !d.classList.contains('item')) return;
   if (d.open) openItems.add(d.dataset.item); else openItems.delete(d.dataset.item);
+  if (d.open) {
+    const mp = d.dataset.item.match(/^pages\.(\d+)$/), ms = d.dataset.item.match(/^sections\.(\d+)$/);
+    if (mp && draft.pages[+mp[1]]) gotoPreview('p-' + slugify(draft.pages[+mp[1]].slug || draft.pages[+mp[1]].titre));
+    if (ms && draft.sections[+ms[1]]) gotoPreview(draft.sections[+ms[1]].id);
+  }
 }, true);
 
 $('#tabs').addEventListener('click', (e) => {
