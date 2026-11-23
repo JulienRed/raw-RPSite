@@ -1,4 +1,4 @@
-/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 04:32:41.
+/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 04:33:22.
    Pour modifier le site, passe par le panel admin (étoile du logo). */
 window.RAWRP_CONTENT = {
   "meta": {
@@ -61,7 +61,7 @@ window.RAWRP_CONTENT = {
   "hero": {
     "bandeau": "LE ROLEPLAY N'A PAS DE LIMITES",
     "titre": "TA VILLE.\n*TES RÈGLES.*\nTON HISTOIRE.",
-    "texte": "Bienvenue sur **RAW RP**. Une ville pleine d'opportunités, de rencontres et de choix. Ici, chaque décision écrit la suite de ton histoire.",
+    "texte": "",
     "bouton1": "COMMENCER L'AVENTURE",
     "bouton2": "DÉCOUVRIR LA VILLE",
     "statutDev": "SERVEUR EN DÉVELOPPEMENT",
@@ -307,5 +307,5 @@ window.RAWRP_CONTENT = {
     "retour": "RETOUR EN HAUT",
     "boutonAdmin": true
   },
-  "_maj": 1795404761271
+  "_maj": 1795404802396
 };
