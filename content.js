@@ -1,4 +1,4 @@
-/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 04:48:32.
+/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 05:16:31.
    Pour modifier le site, passe par le panel admin (étoile du logo). */
 window.RAWRP_CONTENT = {
   "meta": {
@@ -68,7 +68,9 @@ window.RAWRP_CONTENT = {
     "statutOuvert": "SERVEUR OUVERT",
     "lieu": "LOS SANTOS, SAN ANDREAS",
     "scene": "centre",
-    "image": "images/fond-capture.webp"
+    "image": "images/fond-capture.webp",
+    "position": "centre",
+    "assombrir": 0
   },
   "univers": {
     "kicker": "EXPLORE LES POSSIBILITÉS",
@@ -255,6 +257,30 @@ window.RAWRP_CONTENT = {
       {
         "src": "images/1795405263142-p1.webp",
         "titre": "PREMIUM DELUX MOTORSPORT"
+      },
+      {
+        "src": "images/1795407241968-p2.webp",
+        "titre": "PATROL HELICO"
+      },
+      {
+        "src": "images/1795407265015-p3.webp",
+        "titre": "LSFD - CENTRE VILLE"
+      },
+      {
+        "src": "images/1795407289830-p4.webp",
+        "titre": "BALADE EN MONTAGNE"
+      },
+      {
+        "src": "images/1795407308397-p5.webp",
+        "titre": "LSPD - RECHERCHE DE FUGITIF"
+      },
+      {
+        "src": "images/1795407364431-p6.webp",
+        "titre": "LSPD - PATROL"
+      },
+      {
+        "src": "images/1795407382015-p7.webp",
+        "titre": "LSFD - CASERNE"
       }
     ]
   },
@@ -307,10 +333,11 @@ window.RAWRP_CONTENT = {
     "noteDev": "Serveur en développement — adresse FiveM à venir.",
     "noteOuvert": "Le bouton ouvre FiveM s'il est installé. Sinon, appuie sur F8 dans FiveM et colle la commande copiée."
   },
+  "pages": [],
   "footer": {
     "texte": "RAW RP — Serveur de fans, non affilié à Rockstar Games ni à Take-Two Interactive.",
     "retour": "RETOUR EN HAUT",
     "boutonAdmin": true
   },
-  "_maj": 1795406230800
+  "_maj": 1795407390957
 };
