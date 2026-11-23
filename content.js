@@ -1,4 +1,4 @@
-/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 04:33:22.
+/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 04:38:30.
    Pour modifier le site, passe par le panel admin (étoile du logo). */
 window.RAWRP_CONTENT = {
   "meta": {
@@ -20,7 +20,7 @@ window.RAWRP_CONTENT = {
   "liens": {
     "discord": "https://discord.gg/3dhPR6pT7J",
     "fivem": "",
-    "ouverture": ""
+    "ouverture": "2026-11-23T05:00"
   },
   "nav": {
     "accueil": "Accueil",
@@ -307,5 +307,5 @@ window.RAWRP_CONTENT = {
     "retour": "RETOUR EN HAUT",
     "boutonAdmin": true
   },
-  "_maj": 1795404802396
+  "_maj": 1795405110918
 };
