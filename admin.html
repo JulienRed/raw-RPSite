@@ -14,21 +14,9 @@
 </head>
 <body>
 
-  <!-- ================= Connexion ================= -->
+  <!-- ================= Connexion (écrans remplis par admin.js) ================= -->
   <section class="login" id="login">
-    <form class="login-card" id="loginForm" autocomplete="off">
-      <div class="logo"><img src="images/logo.png" alt="RAW RP"> <small>ADMIN</small></div>
-      <h1 id="lgTitle">Panel admin</h1>
-      <p class="sub" id="lgSub">Entre ton mot de passe pour modifier le site.</p>
-      <label>Mot de passe<input id="lgPw" type="password" required autocomplete="current-password"></label>
-      <label id="lgPw2Wrap" hidden>Confirme le mot de passe<input id="lgPw2" type="password" autocomplete="new-password"></label>
-      <p class="error" id="lgError" role="alert" hidden></p>
-      <button class="btn primary big" id="lgBtn" type="submit">Se connecter</button>
-      <div class="login-foot">
-        <a href="index.html">← Retour au site</a>
-        <button type="button" class="linkbtn" id="lgForgot">Mot de passe oublié ?</button>
-      </div>
-    </form>
+    <form class="login-card" id="loginCard" autocomplete="off"></form>
   </section>
 
   <!-- ================= Éditeur ================= -->
@@ -43,22 +31,24 @@
           <button class="ic" id="moreBtn" aria-haspopup="true" aria-expanded="false" aria-label="Plus d'options">⋯</button>
           <div class="dropdown" id="more" hidden>
             <a href="index.html" target="_blank" rel="noopener">Voir le site ↗</a>
-            <button id="linkFolder">Relier le dossier du site</button>
-            <button id="downloadBtn">Télécharger content.js</button>
-            <button id="discard">Annuler les modifications non enregistrées</button>
+            <a id="histLink" href="#" target="_blank" rel="noopener">Historique des versions (GitHub) ↗</a>
+            <button id="discard">Annuler les modifications non publiées</button>
             <button id="exportBtn">Exporter une sauvegarde (.json)</button>
             <label class="as-btn">Importer une sauvegarde<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+            <button id="downloadBtn">Télécharger content.js (sauvegarde)</button>
             <button id="resetBtn">Revenir au contenu d'origine</button>
-            <button id="changePw">Changer le mot de passe</button>
+            <button id="changePw" class="sep">Changer le mot de passe</button>
+            <button id="changePhrase">Changer la phrase secrète</button>
+            <button id="changeToken">Remplacer le jeton GitHub</button>
             <button id="logout" class="danger">Se déconnecter</button>
           </div>
         </div>
         <button class="btn" id="logoutTop" title="Se déconnecter"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span>Déconnexion</span></button>
-        <button class="btn primary" id="publish">Enregistrer</button>
+        <button class="btn primary" id="publish">Publier</button>
       </div>
     </header>
 
-    <div class="folder" id="folderBar"></div>
+    <div class="folder" id="repoBar"></div>
 
     <div class="banner" id="draftBanner" hidden>
       Un brouillon non publié a été retrouvé sur cet appareil.
@@ -87,7 +77,9 @@
     </div>
   </div>
 
+  <dialog id="modal" class="modal"></dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="depot.js"></script>
   <script src="defaults.js"></script>
   <script src="content.js"></script>
   <script src="admin.js"></script>

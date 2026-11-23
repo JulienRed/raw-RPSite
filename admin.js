@@ -1,14 +1,16 @@
 /* =========================================================
-   RAW RP — panel admin (version locale)
+   RAW RP — panel admin connecté à GitHub
    ---------------------------------------------------------
-   - Connexion par mot de passe, gardé dans ce navigateur.
-   - « Enregistrer » garde le contenu dans ce navigateur : le site
-     ouvert sur cet ordinateur l'affiche tout de suite.
-   - Avec Chrome ou Edge, « Relier le dossier du site » écrit aussi
-     content.js et les images directement dans le dossier.
-   - Sinon, « Télécharger content.js » puis remplace le fichier
-     dans le dossier du site.
+   - « Publier » écrit content.js (et les images) dans le dépôt
+     GitHub : le site est mis à jour pour tout le monde.
+   - Le mot de passe est le même partout : il déverrouille le
+     jeton GitHub, stocké CHIFFRÉ dans admin.json (AES-GCM,
+     clé dérivée du mot de passe par PBKDF2, 600 000 tours).
+   - La phrase secrète déverrouille une 2e copie chiffrée du
+     jeton : elle sert pour « Mot de passe oublié ».
+   - Sans le mot de passe ou la phrase, admin.json est inutilisable.
    ========================================================= */
+
 (() => {
 const D = window.RAWRP_DEFAULT;
 const $ = (s) => document.querySelector(s);
@@ -170,11 +172,24 @@ const TABS = [
 /* =========================================================
    État
    ========================================================= */
-const K_CONTENT = 'rawrp-contenu', K_DRAFT = 'rawrp-brouillon', K_PW = 'rawrp-admin-pw', K_SESSION = 'rawrp-admin-ok';
-let saved = '';          // dernier contenu enregistré (JSON)
+const API = 'https://api.github.com';
+const REPO = (() => {
+  const d = window.RAWRP_DEPOT || {};
+  const h = location.hostname;
+  if (h.endsWith('.github.io')) {
+    const seg = location.pathname.split('/').filter(Boolean)[0];
+    return { owner: h.split('.')[0], repo: seg && !seg.endsWith('.html') ? seg : h, branch: d.branch || 'main' };
+  }
+  return { owner: d.owner || '', repo: d.repo || '', branch: d.branch || 'main' };
+})();
+const K_CONTENT = 'rawrp-contenu', K_DRAFT = `rawrp-brouillon:${REPO.owner}/${REPO.repo}`, K_TOKEN = 'rawrp-gh-session';
+const MIN_PW = 12, MIN_PHRASE = 20, ITER = 600000;
+let token = '';          // jeton GitHub déchiffré (uniquement en mémoire / onglet)
+let cfg = null, cfgSha = null;   // admin.json
+let sha = null;          // version de content.js sur GitHub
+let saved = '';          // dernier contenu publié (JSON)
 let draft = null;        // contenu en cours de modification
-let previews = {};       // images écrites dans le dossier (aperçu immédiat)
-let dir = null;          // dossier du site relié (Chrome / Edge)
+let previews = {};       // images envoyées, pas encore en ligne
 let tab = 'general';
 let listDefs = {};
 const openItems = new Set();
@@ -187,96 +202,301 @@ function toast(msg, err) {
   t.classList.toggle('err', !!err);
   t.classList.add('show');
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), err ? 6000 : 3200);
+  t._timer = setTimeout(() => t.classList.remove('show'), err ? 6500 : 3500);
 }
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-  set(k, v) { localStorage.setItem(k, v); },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
   del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+const sess = {
+  get() { try { return sessionStorage.getItem(K_TOKEN) || ''; } catch (e) { return ''; } },
+  set(v) { try { sessionStorage.setItem(K_TOKEN, v); } catch (e) {} },
+  del() { try { sessionStorage.removeItem(K_TOKEN); } catch (e) {} }
 };
 const strip = (c) => { const o = clone(c); delete o._maj; return o; };
 
 /* =========================================================
-   Chargement du contenu
+   API GitHub
    ========================================================= */
-function loadContent() {
-  let data = window.RAWRP_CONTENT || null;
+function ghError(status, data) {
+  if (status === 401) return 'Le jeton GitHub est refusé : il est invalide ou a expiré.';
+  if (status === 403) return data && /rate limit/i.test(data.message || '') ? 'GitHub limite les requêtes pour le moment. Réessaie dans quelques minutes.' : 'Accès refusé : le jeton doit avoir « Contents : Read and write » sur ce dépôt.';
+  if (status === 404) return 'Dépôt introuvable, ou le jeton n\'a pas accès à ce dépôt.';
+  if (status === 409) return 'Conflit : le fichier a changé entre-temps. Réessaie.';
+  return `Erreur GitHub ${status}${data && data.message ? ' : ' + data.message : ''}`;
+}
+async function gh(path, opt = {}) {
+  const tk = opt.token !== undefined ? opt.token : token;
+  let r;
   try {
-    const local = JSON.parse(store.get(K_CONTENT) || 'null');
-    if (local && (local._maj || 0) > ((data && data._maj) || 0)) data = local;
-  } catch (e) {}
-  saved = JSON.stringify(strip(normalize(data)));
-  draft = JSON.parse(saved);
-  hist = [saved]; hpos = 0;
+    r = await fetch(`${API}/repos/${encodeURIComponent(REPO.owner)}/${encodeURIComponent(REPO.repo)}${path}`, {
+      method: opt.method || 'GET',
+      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(tk ? { Authorization: `Bearer ${tk}` } : {}), ...(opt.body ? { 'Content-Type': 'application/json' } : {}) },
+      body: opt.body ? JSON.stringify(opt.body) : undefined,
+      cache: 'no-store'
+    });
+  } catch (e) {
+    const x = new Error('Impossible de joindre GitHub. Vérifie ta connexion Internet.'); x.net = true; throw x;
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(ghError(r.status, data)); e.status = r.status; throw e; }
+  return data;
+}
+const fromB64 = (b) => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
+function toB64(str) {
+  const bytes = typeof str === 'string' ? new TextEncoder().encode(str) : str;
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+const ref = () => `?ref=${encodeURIComponent(REPO.branch)}`;
+async function putFile(path, contentB64, message, fileSha) {
+  const body = (s) => ({ message, content: contentB64, branch: REPO.branch, ...(s ? { sha: s } : {}) });
+  try {
+    return await gh(`/contents/${path}`, { method: 'PUT', body: body(fileSha) });
+  } catch (e) {
+    if (e.status !== 409 && e.status !== 422) throw e;
+    const f = await gh(`/contents/${path}${ref()}`).catch(() => null);   // version à jour, puis on réessaie
+    return gh(`/contents/${path}`, { method: 'PUT', body: body(f ? f.sha : null) });
+  }
 }
 
 /* =========================================================
-   Connexion par mot de passe (local)
+   Chiffrement du jeton (mot de passe / phrase secrète)
    ========================================================= */
-async function hash(pw) {
-  try {
-    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('rawrp:' + pw));
-    return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
-  } catch (e) {
-    let h = 5381;
-    for (const ch of 'rawrp:' + pw) h = ((h << 5) + h + ch.charCodeAt(0)) | 0;
-    return 'x' + (h >>> 0).toString(16);
-  }
+const te = new TextEncoder(), td = new TextDecoder();
+const b64 = (buf) => toB64(new Uint8Array(buf));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const normPhrase = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+async function keyFrom(secret, salt, iter) {
+  const base = await crypto.subtle.importKey('raw', te.encode(secret), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
-const hasPw = () => !!store.get(K_PW);
+async function seal(secret, text) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const k = await keyFrom(secret, salt, ITER);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, te.encode(text));
+  return { iter: ITER, salt: b64(salt), iv: b64(iv), ct: b64(ct) };
+}
+async function unseal(secret, box) {
+  try {
+    const k = await keyFrom(secret, unb64(box.salt), box.iter || ITER);
+    return td.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, k, unb64(box.ct)));
+  } catch (e) { return null; }
+}
+async function saveCfg(next) {
+  const r = await putFile('admin.json', toB64(JSON.stringify(next, null, 2) + '\n'), 'Mise à jour de l\'accès admin', cfgSha);
+  cfg = next; cfgSha = r.content.sha;
+}
 
-function showLogin() {
-  const create = !hasPw();
-  $('#lgTitle').textContent = create ? 'Crée ton accès admin' : 'Panel admin';
-  $('#lgSub').textContent = create
-    ? 'Première connexion : choisis un mot de passe (6 caractères minimum). Il sera demandé à chaque ouverture du panel sur cet appareil.'
-    : 'Entre ton mot de passe pour modifier le site.';
-  $('#lgPw2Wrap').hidden = !create;
-  $('#lgPw2').required = create;
-  $('#lgPw').autocomplete = create ? 'new-password' : 'current-password';
-  $('#lgBtn').textContent = create ? 'Créer et entrer' : 'Se connecter';
-  $('#lgForgot').hidden = create;
+/* =========================================================
+   Écrans de connexion
+   ========================================================= */
+const card = () => $('#loginCard');
+const LOGO = '<div class="logo"><img src="images/logo.png" alt="RAW RP"> <small>ADMIN</small></div>';
+const FOOT = '<div class="login-foot"><a href="index.html">← Retour au site</a><span class="repo">${repo}</span></div>';
+const pwField = (id, label, auto) => `<label>${label}<span class="pw"><input id="${id}" type="password" autocomplete="${auto}" required><button type="button" class="eye" data-eye="${id}" aria-label="Afficher ou masquer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>`;
+function screen(html, onSubmit) {
+  card().innerHTML = LOGO + html + `<p class="error" id="lgError" role="alert" hidden></p>` + FOOT.replace('${repo}', esc(`${REPO.owner}/${REPO.repo}`));
   $('#login').hidden = false;
   $('#app').hidden = true;
-  setTimeout(() => $('#lgPw').focus(), 50);
+  card().onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = card().querySelector('button[type=submit]');
+    const label = btn ? btn.textContent : '';
+    $('#lgError').hidden = true;
+    if (btn) { btn.disabled = true; btn.textContent = 'Vérification…'; }
+    try { await onSubmit(); } catch (x) { fail(x.message || 'Erreur inattendue.'); }
+    finally { if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = label; } }
+  };
+  const first = card().querySelector('input');
+  if (first) setTimeout(() => first.focus(), 50);
+}
+function fail(m) { const e = $('#lgError'); if (e) { e.textContent = m; e.hidden = false; } }
+const val = (id) => ($('#' + id) ? $('#' + id).value : '');
+
+async function boot() {
+  if (!window.crypto || !crypto.subtle) {
+    screen('<h1>Navigateur non compatible</h1><p class="sub">Ouvre le panel depuis l\'adresse en https du site, dans un navigateur récent (Chrome, Edge, Safari, Firefox).</p>', async () => {});
+    return;
+  }
+  if (!REPO.owner || !REPO.repo) {
+    screen('<h1>Dépôt non défini</h1><p class="sub">Renseigne le compte et le dépôt GitHub dans le fichier <code>depot.js</code>.</p>', async () => {});
+    return;
+  }
+  screen('<h1>Connexion…</h1><p class="sub">Lecture de la configuration sur GitHub.</p>', async () => {});
+  try {
+    const f = await gh(`/contents/admin.json${ref()}`, { token: '' });
+    cfg = JSON.parse(fromB64(f.content)); cfgSha = f.sha;
+  } catch (e) {
+    if (e.status === 404) { cfg = null; cfgSha = null; return showSetup(); }
+    return screen(`<h1>Connexion impossible</h1><p class="sub">${esc(e.message)}</p><button class="btn primary big" type="submit">Réessayer</button>`, async () => boot());
+  }
+  // déjà connecté dans cet onglet ?
+  const tk = sess.get();
+  if (tk) {
+    token = tk;
+    try { await gh(''); return startApp(); } catch (e) { token = ''; sess.del(); }
+  }
+  showLogin();
 }
 
-async function login(e) {
-  e.preventDefault();
-  const err = $('#lgError'), pw = $('#lgPw').value;
-  err.hidden = true;
-  const fail = (m) => { err.textContent = m; err.hidden = false; };
-  if (!hasPw()) {
-    if (pw.length < 6) return fail('Choisis au moins 6 caractères.');
-    if (pw !== $('#lgPw2').value) return fail('Les deux mots de passe ne sont pas identiques.');
-    try { store.set(K_PW, await hash(pw)); } catch (x) { return fail('Ce navigateur bloque le stockage local. Autorise-le ou essaie Chrome.'); }
-  } else if ((await hash(pw)) !== store.get(K_PW)) {
-    $('#lgPw').value = '';
-    return fail('Mot de passe incorrect.');
+function showLogin() {
+  screen(`<h1>Panel admin</h1><p class="sub">Entre le mot de passe admin.</p>
+    ${pwField('lgPw', 'Mot de passe', 'current-password')}
+    <button class="btn primary big" type="submit">Se connecter</button>
+    <button type="button" class="linkbtn" id="lgForgot">Mot de passe oublié ?</button>`, async () => {
+    const tk = await unseal(val('lgPw'), cfg.motDePasse);
+    if (!tk) { $('#lgPw').value = ''; return fail('Mot de passe incorrect.'); }
+    await enter(tk, val('lgPw'));
+  });
+  $('#lgForgot').onclick = showForgot;
+}
+
+async function enter(tk, pw) {
+  token = tk;
+  try {
+    await gh('');
+  } catch (e) {
+    token = '';
+    if (e.status === 401) return showNewToken(pw);
+    throw e;
   }
-  try { sessionStorage.setItem(K_SESSION, '1'); } catch (x) {}
-  $('#lgPw').value = ''; $('#lgPw2').value = '';
+  sess.set(tk);
   startApp();
 }
 
-function forgot() {
-  if (!confirm('Réinitialiser le mot de passe ? Le contenu du site n\'est pas touché : tu choisiras simplement un nouveau mot de passe.')) return;
-  store.del(K_PW);
-  showLogin();
+function showForgot() {
+  screen(`<h1>Mot de passe oublié</h1><p class="sub">Entre ta phrase secrète pour choisir un nouveau mot de passe. Les majuscules, accents et la ponctuation ne comptent pas.</p>
+    ${cfg.indice ? `<p class="tip">Indice : ${esc(cfg.indice)}</p>` : ''}
+    <label>Phrase secrète<textarea id="lgPhrase" rows="2" required autocapitalize="off" spellcheck="false"></textarea></label>
+    <button class="btn primary big" type="submit">Vérifier la phrase</button>
+    <button type="button" class="linkbtn" id="lgBack">← Retour à la connexion</button>`, async () => {
+    await new Promise((r) => setTimeout(r, 400));   // ralentit les essais en série
+    const phrase = normPhrase(val('lgPhrase'));
+    const tk = await unseal(phrase, cfg.phrase);
+    if (!tk) return fail('Phrase secrète incorrecte.');
+    showReset(tk, phrase);
+  });
+  $('#lgBack').onclick = showLogin;
 }
+
+function showReset(tk, phrase) {
+  screen(`<h1>Nouveau mot de passe</h1><p class="sub">Phrase secrète correcte. Choisis ton nouveau mot de passe (${MIN_PW} caractères minimum).</p>
+    ${pwField('rsPw', 'Nouveau mot de passe', 'new-password')}
+    ${pwField('rsPw2', 'Confirme le mot de passe', 'new-password')}
+    <button class="btn primary big" type="submit">Enregistrer et entrer</button>`, async () => {
+    const pw = val('rsPw');
+    if (pw.length < MIN_PW) return fail(`Au moins ${MIN_PW} caractères.`);
+    if (pw !== val('rsPw2')) return fail('Les deux mots de passe ne sont pas identiques.');
+    token = tk;
+    try { await gh(''); } catch (e) { token = ''; if (e.status === 401) return showNewToken(pw, phrase); throw e; }
+    await saveCfg({ ...cfg, motDePasse: await seal(pw, tk), maj: new Date().toISOString() });
+    sess.set(tk);
+    toast('Nouveau mot de passe enregistré, valable partout.');
+    startApp();
+  });
+}
+
+function showNewToken(pw, phrase) {
+  screen(`<h1>Jeton GitHub expiré</h1><p class="sub">Le jeton GitHub enregistré ne marche plus. Colle un nouveau jeton${phrase ? '' : ' et ta phrase secrète'} pour le remplacer.</p>
+    ${tokenHelp()}
+    ${pwField('ntToken', 'Nouveau jeton GitHub', 'off')}
+    ${phrase ? '' : '<label>Phrase secrète<textarea id="ntPhrase" rows="2" required autocapitalize="off" spellcheck="false"></textarea></label>'}
+    <button class="btn primary big" type="submit">Remplacer le jeton</button>`, async () => {
+    const ph = phrase || normPhrase(val('ntPhrase'));
+    if (!phrase && !(await unseal(ph, cfg.phrase))) return fail('Phrase secrète incorrecte.');
+    const tk = val('ntToken').trim();
+    await checkToken(tk);
+    token = tk;
+    await saveCfg({ ...cfg, motDePasse: await seal(pw, tk), phrase: await seal(ph, tk), maj: new Date().toISOString() });
+    sess.set(tk);
+    toast('Nouveau jeton enregistré.');
+    startApp();
+  });
+}
+
+async function checkToken(tk) {
+  if (!tk) throw new Error('Colle le jeton GitHub.');
+  const info = await gh('', { token: tk });
+  if (info.permissions && info.permissions.push === false) throw new Error('Ce jeton peut lire le dépôt mais pas le modifier.');
+}
+
+function tokenHelp() {
+  return `<details class="help"><summary>Créer un jeton GitHub (2 minutes)</summary><ol>
+    <li>Connecté au compte <b>${esc(REPO.owner)}</b>, ouvre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub › Fine-grained tokens › Generate new token</a>.</li>
+    <li><b>Token name</b> : « Admin RAW RP ». <b>Expiration</b> : la plus longue possible.</li>
+    <li><b>Repository access</b> : <i>Only select repositories</i> › <b>${esc(REPO.repo)}</b> uniquement.</li>
+    <li><b>Permissions › Contents</b> : <i>Read and write</i>. Rien d'autre.</li>
+    <li><b>Generate token</b>, copie-le et colle-le ici.</li></ol></details>`;
+}
+
+function showSetup() {
+  screen(`<h1>Configurer le panel admin</h1>
+    <p class="sub">À faire une seule fois. Le jeton GitHub permet au panel de publier le site. Il est enregistré <b>chiffré</b> : seuls ton mot de passe ou ta phrase secrète peuvent le déverrouiller.</p>
+    ${tokenHelp()}
+    ${pwField('suToken', 'Jeton GitHub', 'off')}
+    ${pwField('suPw', `Mot de passe admin (${MIN_PW} caractères minimum)`, 'new-password')}
+    ${pwField('suPw2', 'Confirme le mot de passe', 'new-password')}
+    <label>Phrase secrète (pour « mot de passe oublié »)<textarea id="suPhrase" rows="2" required autocapitalize="off" spellcheck="false" placeholder="Ex. : le tracteur rouge de papi dort sous le figuier"></textarea><span class="hint">Au moins ${MIN_PHRASE} caractères, une vraie phrase que toi seul connais. Note-la quelque part en sécurité.</span></label>
+    <label>Indice (facultatif, visible par tous)<input id="suHint" maxlength="80" placeholder="Ex. : le tracteur de papi"></label>
+    <button class="btn primary big" type="submit">Configurer et entrer</button>`, async () => {
+    const tk = val('suToken').trim(), pw = val('suPw'), phrase = normPhrase(val('suPhrase'));
+    if (pw.length < MIN_PW) return fail(`Le mot de passe doit faire au moins ${MIN_PW} caractères.`);
+    if (pw !== val('suPw2')) return fail('Les deux mots de passe ne sont pas identiques.');
+    if (phrase.length < MIN_PHRASE) return fail(`La phrase secrète doit faire au moins ${MIN_PHRASE} caractères.`);
+    if (phrase === normPhrase(pw)) return fail('La phrase secrète doit être différente du mot de passe.');
+    await checkToken(tk);
+    token = tk;
+    await saveCfg({ v: 1, indice: val('suHint').trim(), motDePasse: await seal(pw, tk), phrase: await seal(phrase, tk), maj: new Date().toISOString() });
+    sess.set(tk);
+    toast('Panel configuré. Le même mot de passe marche maintenant partout.');
+    startApp();
+  });
+}
+
+// bouton « œil » pour afficher les mots de passe
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-eye]');
+  if (!b) return;
+  const i = $('#' + b.dataset.eye);
+  i.type = i.type === 'password' ? 'text' : 'password';
+});
+
 function logout() {
-  if (isDirty() && !confirm('Tu as des modifications non enregistrées. Elles restent gardées en brouillon. Se déconnecter quand même ?')) return;
-  try { sessionStorage.removeItem(K_SESSION); } catch (e) {}
+  if (isDirty() && !confirm('Tu as des modifications non publiées. Elles restent gardées en brouillon sur cet appareil. Se déconnecter quand même ?')) return;
+  sess.del();
+  token = '';
   location.reload();
 }
 
 /* =========================================================
    Démarrage de l'éditeur
    ========================================================= */
-function startApp() {
-  loadContent();
+async function loadContent() {
+  try {
+    const f = await gh(`/contents/content.js${ref()}`);
+    sha = f.sha;
+    const txt = fromB64(f.content);
+    saved = JSON.stringify(strip(normalize(JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1)))));
+  } catch (e) {
+    if (e.status !== 404 && !(e instanceof SyntaxError)) throw e;
+    sha = null;
+    saved = JSON.stringify(strip(normalize(window.RAWRP_CONTENT || null)));
+  }
+  draft = JSON.parse(saved);
+  hist = [saved]; hpos = 0;
+}
+
+async function startApp() {
+  screen('<h1>Chargement…</h1><p class="sub">Récupération du contenu publié.</p>', async () => {});
+  try { await loadContent(); }
+  catch (e) { return screen(`<h1>Chargement impossible</h1><p class="sub">${esc(e.message)}</p><button class="btn primary big" type="submit">Réessayer</button>`, async () => startApp()); }
   $('#login').hidden = true;
   $('#app').hidden = false;
+  $('#repoBar').innerHTML = `<span class="ok">●</span> Connecté à GitHub : <b>${esc(REPO.owner)}/${esc(REPO.repo)}</b> — « Publier » met le site à jour pour tout le monde (1 à 2 minutes).`;
+  $('#histLink').href = `https://github.com/${REPO.owner}/${REPO.repo}/commits/${REPO.branch}/content.js`;
   try {
     const d = JSON.parse(store.get(K_DRAFT) || 'null');
     if (d && d.json && d.json !== saved) $('#draftBanner').hidden = false;
@@ -284,7 +504,6 @@ function startApp() {
   renderEditor(true);
   updateState();
   sendPreview();
-  restoreFolder();
 }
 
 /* =========================================================
@@ -377,7 +596,7 @@ const isDirty = () => JSON.stringify(draft) !== saved;
 function updateState() {
   const dirty = isDirty();
   const pill = $('#state');
-  pill.textContent = dirty ? 'Modifications non enregistrées' : 'Tout est enregistré';
+  pill.textContent = dirty ? 'Modifications non publiées' : 'Tout est publié';
   pill.className = 'pill ' + (dirty ? 'dirty' : 'ok');
   $('#publish').classList.toggle('has', dirty);
   $('#undo').disabled = hpos <= 0 && JSON.stringify(draft) === hist[hpos];
@@ -445,7 +664,7 @@ function onField(el) {
   changed(false);
 }
 
-/* ---------- Images : réduction, puis dans le dossier ou intégrées ---------- */
+/* ---------- Images : réduction puis envoi sur GitHub ---------- */
 function shrink(file, max, q) {
   return new Promise((res, rej) => {
     const img = new Image();
@@ -471,32 +690,19 @@ async function onUpload(input) {
   const p = input.dataset.up, file = input.files && input.files[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) return toast('Ce fichier n\'est pas une image.', true);
-  input.parentElement.firstChild.textContent = 'Traitement…';
+  input.parentElement.firstChild.textContent = 'Envoi…';
   try {
-    if (dir && (await folderPerm(true))) {
-      const { dataUrl, ext } = await shrink(file, 1920, 0.82);
-      const name = `images/${Date.now()}-${slug(file.name.replace(/\.[^.]+$/, ''))}.${ext}`;
-      await writeFile(name, dataToBlob(dataUrl));
-      previews[name] = dataUrl;
-      setP(draft, p, name);
-      toast('Image ajoutée dans le dossier images/.');
-    } else {
-      // pas de dossier relié : l'image est intégrée au contenu (plus léger : 1280 px)
-      const { dataUrl } = await shrink(file, 1280, 0.78);
-      setP(draft, p, dataUrl);
-      toast('Image ajoutée. Pense à enregistrer.');
-    }
+    const { dataUrl, ext } = await shrink(file, 1920, 0.82);
+    const name = `images/${Date.now()}-${slug(file.name.replace(/\.[^.]+$/, ''))}.${ext}`;
+    await putFile(name, dataUrl.split(',')[1], `Ajout de l'image ${name}`);
+    previews[name] = dataUrl;
+    setP(draft, p, name);
     changed(true);
+    toast('Image envoyée sur GitHub. Pense à publier.');
   } catch (e) {
-    toast(e.message || 'Impossible d\'ajouter l\'image.', true);
+    toast(e.message || 'Impossible d\'envoyer l\'image.', true);
     renderEditor();
   }
-}
-function dataToBlob(d) {
-  const [h, b] = d.split(','), type = h.slice(5, h.indexOf(';'));
-  const bin = atob(b), arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([arr], { type });
 }
 
 
@@ -555,95 +761,29 @@ addEventListener('message', (e) => {
 });
 
 /* =========================================================
-   Dossier du site (Chrome / Edge) : écriture directe des fichiers
+   Publication sur GitHub
    ========================================================= */
-const canFolder = 'showDirectoryPicker' in window;
-const idb = (mode, fn) => new Promise((res, rej) => {
-  const r = indexedDB.open('rawrp-admin', 1);
-  r.onupgradeneeded = () => r.result.createObjectStore('kv');
-  r.onerror = () => rej(r.error);
-  r.onsuccess = () => { const tx = r.result.transaction('kv', mode); const q = fn(tx.objectStore('kv')); tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); };
-});
-async function restoreFolder() {
-  if (!canFolder) return renderFolder();
-  try { dir = (await idb('readonly', (s) => s.get('dir'))) || null; } catch (e) { dir = null; }
-  renderFolder();
-}
-async function folderPerm(ask) {
-  if (!dir) return false;
-  const o = { mode: 'readwrite' };
-  try {
-    if ((await dir.queryPermission(o)) === 'granted') return true;
-    return ask ? (await dir.requestPermission(o)) === 'granted' : false;
-  } catch (e) { return false; }
-}
-async function linkFolder() {
-  if (!canFolder) return toast('Ton navigateur ne permet pas de relier un dossier. Utilise Chrome ou Edge, ou « Télécharger content.js ».', true);
-  try {
-    const h = await window.showDirectoryPicker({ id: 'rawrp-site', mode: 'readwrite' });
-    try { await h.getFileHandle('index.html'); }
-    catch (e) { if (!confirm(`Le dossier « ${h.name} » ne contient pas index.html. Est-ce bien le dossier du site ?`)) return; }
-    dir = h;
-    try { await idb('readwrite', (s) => s.put(h, 'dir')); } catch (e) {}
-    renderFolder();
-    toast(`Dossier « ${h.name} » relié. « Enregistrer » écrira directement dedans.`);
-  } catch (e) {
-    if (e.name !== 'AbortError') toast('Impossible de relier ce dossier.', true);
-  }
-}
-async function unlinkFolder() {
-  dir = null;
-  try { await idb('readwrite', (s) => s.delete('dir')); } catch (e) {}
-  renderFolder();
-}
-async function writeFile(path, data) {
-  const parts = path.split('/');
-  let d = dir;
-  for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true });
-  const fh = await d.getFileHandle(parts[parts.length - 1], { create: true });
-  const w = await fh.createWritable();
-  await w.write(data);
-  await w.close();
-}
-function renderFolder() {
-  const bar = $('#folderBar');
-  if (dir) {
-    bar.innerHTML = `<span class="ok">●</span> Dossier relié : <b>${esc(dir.name)}</b> — « Enregistrer » met à jour content.js dedans. <button class="btn small" id="unlink">Délier</button>`;
-    $('#unlink').onclick = unlinkFolder;
-  } else if (canFolder) {
-    bar.innerHTML = 'Tes modifications sont gardées dans ce navigateur. Pour les écrire dans les fichiers du site : <button class="btn small primary" id="link2">Relier le dossier du site</button>';
-    $('#link2').onclick = linkFolder;
-  } else {
-    bar.innerHTML = 'Tes modifications sont gardées dans ce navigateur. Pour les mettre dans les fichiers du site : <button class="btn small primary" id="dl2">Télécharger content.js</button> puis remplace celui du dossier.';
-    $('#dl2').onclick = download;
-  }
-}
+const contentFile = (c) => `/* Contenu du site RAW RP — publié depuis le panel admin le ${new Date().toLocaleString('fr-FR')}.\n   Pour modifier le site, passe par le panel admin (étoile du logo). */\nwindow.RAWRP_CONTENT = ${JSON.stringify(c, null, 2)};\n`;
 
-/* =========================================================
-   Enregistrement
-   ========================================================= */
-const contentFile = (c) => `/* Contenu du site RAW RP — généré par admin.html le ${new Date().toLocaleString('fr-FR')}.\n   Pour modifier le site, passe par le panel admin. */\nwindow.RAWRP_CONTENT = ${JSON.stringify(c, null, 2)};\n`;
-
-async function save() {
+async function publish() {
   snapshot();
+  if (!isDirty()) return toast('Tout est déjà publié.');
+  const btn = $('#publish');
+  btn.disabled = true; btn.textContent = 'Publication…';
   const out = { ...clone(draft), _maj: Date.now() };
-  // 1. dans ce navigateur (le site ouvert sur cet appareil l'affiche tout de suite)
   try {
-    store.set(K_CONTENT, JSON.stringify(out));
+    const r = await putFile('content.js', toB64(contentFile(out)), 'Mise à jour du site depuis le panel admin', sha);
+    sha = r.content.sha;
+    store.set(K_CONTENT, JSON.stringify(out));   // ce navigateur voit le changement tout de suite
+    saved = JSON.stringify(draft);
+    saveDraft();
+    updateState();
+    toast('Publié ! Le site sera à jour pour tout le monde d\'ici 1 à 2 minutes.');
   } catch (e) {
-    return toast('Le stockage du navigateur est plein (trop d\'images intégrées). Relie le dossier du site pour enregistrer les images en fichiers.', true);
-  }
-  saved = JSON.stringify(draft);
-  saveDraft();
-  updateState();
-  // 2. dans le dossier, si relié
-  if (dir) {
-    if (await folderPerm(true)) {
-      try { await writeFile('content.js', contentFile(out)); toast('Enregistré dans le dossier du site.'); }
-      catch (e) { toast('Enregistré dans le navigateur, mais l\'écriture de content.js a échoué. Utilise « Télécharger content.js ».', true); }
-    } else toast('Enregistré dans le navigateur. Autorise l\'accès au dossier pour mettre à jour content.js.', true);
-  } else {
-    toast('Enregistré ! Rafraîchis le site pour voir les changements.');
+    if (e.status === 401) { toast('Le jeton GitHub a expiré. Reconnecte-toi pour le remplacer.', true); }
+    else toast(e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Publier';
   }
 }
 function download() {
@@ -653,14 +793,72 @@ function download() {
   a.download = 'content.js';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  toast('content.js téléchargé : remplace celui du dossier du site.');
+}
+
+/* =========================================================
+   Sécurité : changer mot de passe, phrase, jeton
+   ========================================================= */
+function modal(title, html, onOk, okLabel) {
+  const m = $('#modal');
+  m.innerHTML = `<form method="dialog" class="modal-card"><h3>${esc(title)}</h3>${html}<p class="error" id="mdError" hidden></p>
+    <div class="modal-actions"><button type="button" class="btn" id="mdCancel">Annuler</button><button type="submit" class="btn primary">${esc(okLabel || 'Enregistrer')}</button></div></form>`;
+  const f = m.querySelector('form');
+  $('#mdCancel').onclick = () => m.close();
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const err = $('#mdError'), btn = f.querySelector('button[type=submit]'), lbl = btn.textContent;
+    err.hidden = true; btn.disabled = true; btn.textContent = 'Vérification…';
+    try { await onOk(); m.close(); }
+    catch (x) { err.textContent = x.message; err.hidden = false; }
+    finally { btn.disabled = false; btn.textContent = lbl; }
+  };
+  m.showModal();
+  const first = m.querySelector('input,textarea');
+  if (first) first.focus();
+}
+async function needPw(id) {
+  const tk = await unseal(val(id), cfg.motDePasse);
+  if (!tk) throw new Error('Mot de passe actuel incorrect.');
+  return tk;
+}
+function changePassword() {
+  modal('Changer le mot de passe', `${pwField('cpOld', 'Mot de passe actuel', 'current-password')}${pwField('cpNew', `Nouveau mot de passe (${MIN_PW} caractères min.)`, 'new-password')}${pwField('cpNew2', 'Confirme le nouveau mot de passe', 'new-password')}`, async () => {
+    const tk = await needPw('cpOld'), pw = val('cpNew');
+    if (pw.length < MIN_PW) throw new Error(`Au moins ${MIN_PW} caractères.`);
+    if (pw !== val('cpNew2')) throw new Error('Les deux mots de passe ne sont pas identiques.');
+    await saveCfg({ ...cfg, motDePasse: await seal(pw, tk), maj: new Date().toISOString() });
+    toast('Mot de passe changé, valable partout.');
+  });
+}
+function changePhrase() {
+  modal('Changer la phrase secrète', `${pwField('chOld', 'Mot de passe actuel', 'current-password')}
+    <label>Nouvelle phrase secrète (${MIN_PHRASE} caractères min.)<textarea id="chPhrase" rows="2" required autocapitalize="off" spellcheck="false"></textarea></label>
+    <label>Indice (facultatif, visible par tous)<input id="chHint" maxlength="80" value="${esc(cfg.indice || '')}"></label>`, async () => {
+    const tk = await needPw('chOld'), ph = normPhrase(val('chPhrase'));
+    if (ph.length < MIN_PHRASE) throw new Error(`Au moins ${MIN_PHRASE} caractères.`);
+    await saveCfg({ ...cfg, indice: val('chHint').trim(), phrase: await seal(ph, tk), maj: new Date().toISOString() });
+    toast('Phrase secrète changée.');
+  });
+}
+function changeToken() {
+  modal('Remplacer le jeton GitHub', `<p class="sub">Utile quand le jeton arrive à expiration.</p>${tokenHelp()}${pwField('ctToken', 'Nouveau jeton GitHub', 'off')}${pwField('ctPw', 'Mot de passe admin', 'current-password')}
+    <label>Phrase secrète<textarea id="ctPhrase" rows="2" required autocapitalize="off" spellcheck="false"></textarea></label>`, async () => {
+    await needPw('ctPw');
+    const ph = normPhrase(val('ctPhrase'));
+    if (!(await unseal(ph, cfg.phrase))) throw new Error('Phrase secrète incorrecte.');
+    const tk = val('ctToken').trim();
+    await checkToken(tk);
+    token = tk;
+    await saveCfg({ ...cfg, motDePasse: await seal(val('ctPw'), tk), phrase: await seal(ph, tk), maj: new Date().toISOString() });
+    sess.set(tk);
+    toast('Nouveau jeton enregistré.');
+  });
 }
 
 
 /* =========================================================
    Événements
    ========================================================= */
-$('#loginForm').addEventListener('submit', login);
 
 const ed = $('#editor');
 ed.addEventListener('input', (e) => onField(e.target));
@@ -693,20 +891,21 @@ $('#tabs').addEventListener('click', (e) => {
 
 $('#undo').onclick = undo;
 $('#redo').onclick = redo;
-$('#publish').onclick = save;
+$('#publish').onclick = publish;
 document.addEventListener('keydown', (e) => {
   const inField = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
   const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === 's' && !$('#app').hidden) { e.preventDefault(); save(); }
+  if (mod && e.key.toLowerCase() === 's' && !$('#app').hidden) { e.preventDefault(); publish(); }
   if (!inField && mod && e.key.toLowerCase() === 'z' && !$('#app').hidden) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
 });
 
 // menu « ⋯ »
 const more = $('#more'), moreBtn = $('#moreBtn');
 moreBtn.onclick = (e) => { e.stopPropagation(); more.hidden = !more.hidden; moreBtn.setAttribute('aria-expanded', !more.hidden); };
+more.addEventListener('click', (e) => { if (e.target.closest('button, a, label')) setTimeout(() => { more.hidden = true; moreBtn.setAttribute('aria-expanded', 'false'); }, 0); });
 document.addEventListener('click', (e) => { if (!more.hidden && !more.contains(e.target)) { more.hidden = true; moreBtn.setAttribute('aria-expanded', 'false'); } });
-$('#discard').onclick = () => { if (isDirty() && confirm('Annuler toutes les modifications non enregistrées ?')) { snapshot(); openItems.clear(); loadState(saved); snapshot(); } };
-$('#resetBtn').onclick = () => { if (confirm('Remplacer tout le contenu par celui d\'origine ? (rien n\'est enregistré tant que tu ne cliques pas sur Enregistrer)')) { snapshot(); openItems.clear(); loadState(JSON.stringify(normalize(null))); snapshot(); } };
+$('#discard').onclick = () => { if (isDirty() && confirm('Annuler toutes les modifications non publiées ?')) { snapshot(); openItems.clear(); loadState(saved); snapshot(); } };
+$('#resetBtn').onclick = () => { if (confirm('Remplacer tout le contenu par celui d\'origine ? (rien n\'est publié tant que tu ne cliques pas sur Publier)')) { snapshot(); openItems.clear(); loadState(JSON.stringify(normalize(null))); snapshot(); } };
 $('#exportBtn').onclick = () => {
   const blob = new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -721,16 +920,16 @@ $('#importFile').onchange = async (e) => {
   try {
     const data = strip(normalize(JSON.parse(await f.text())));
     snapshot(); openItems.clear(); loadState(JSON.stringify(data)); snapshot();
-    toast('Sauvegarde importée. Vérifie puis enregistre.');
+    toast('Sauvegarde importée. Vérifie puis publie.');
   } catch (x) { toast('Fichier de sauvegarde illisible.', true); }
   e.target.value = '';
 };
 $('#logout').onclick = logout;
 $('#logoutTop').onclick = logout;
-$('#linkFolder').onclick = linkFolder;
 $('#downloadBtn').onclick = download;
-$('#changePw').onclick = () => { if (confirm('Choisir un nouveau mot de passe ?')) { store.del(K_PW); try { sessionStorage.removeItem(K_SESSION); } catch (e) {} showLogin(); } };
-$('#lgForgot').onclick = forgot;
+$('#changePw').onclick = changePassword;
+$('#changePhrase').onclick = changePhrase;
+$('#changeToken').onclick = changeToken;
 
 // brouillon
 $('#draftResume').onclick = () => {
@@ -753,8 +952,5 @@ $$('.seg button').forEach((b) => (b.onclick = () => {
 
 addEventListener('beforeunload', (e) => { if (draft && isDirty()) { e.preventDefault(); e.returnValue = ''; } });
 
-// démarrage : déjà connecté dans cet onglet ?
-let ok = false;
-try { ok = sessionStorage.getItem(K_SESSION) === '1' && hasPw(); } catch (e) {}
-if (ok) startApp(); else showLogin();
+boot();
 })();

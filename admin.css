@@ -45,6 +45,27 @@ a { color: var(--ac); }
 .login .check { display: flex; align-items: center; gap: 10px; font-weight: 500; color: var(--ink); font-size: 14px; }
 .check input { width: 20px; height: 20px; accent-color: var(--ac); }
 .error { margin: 0; padding: 10px 12px; border: 1px solid var(--red); color: #ffd2cc; background: #2a0f0c; font-size: 14px; }
+.login textarea { min-height: 70px; padding: 10px 12px; font-size: 16px; background: var(--bg); border: 1px solid var(--line); resize: vertical; }
+.login textarea:focus { border-color: var(--ac); outline: none; }
+.login .hint { font-weight: 400; color: #7f938c; font-size: 12px; }
+.login code { color: var(--ac); }
+.login .tip { margin: 0; }
+.pw { display: flex; }
+.pw input { flex: 1; }
+.eye { width: 48px; border: 1px solid var(--line); border-left: 0; background: var(--s2); color: var(--mut); display: grid; place-items: center; }
+.eye svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; }
+.eye:hover { color: var(--ac); }
+.login-card > .linkbtn { justify-self: center; }
+.login-foot .repo { color: #5f726c; font-size: 12px; }
+.modal { background: var(--s1); color: var(--ink); border: 1px solid var(--line); border-top: 3px solid var(--ac); padding: 0; width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 24px); }
+.modal::backdrop { background: #000b; }
+.modal-card { display: grid; gap: 12px; padding: 24px; }
+.modal-card h3 { font: 900 30px/1 var(--ft); margin: 0; }
+.modal-card label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: var(--mut); }
+.modal-card input, .modal-card textarea { min-height: 46px; padding: 10px 12px; font-size: 16px; background: var(--bg); border: 1px solid var(--line); }
+.modal-card .sub { color: var(--mut); margin: 0; font-size: 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.dropdown .sep { border-top: 1px solid var(--line); }
 .login-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
 .login-foot a { color: var(--mut); text-decoration: none; min-height: 40px; display: inline-flex; align-items: center; }
 .login-foot a:hover { color: var(--ink); }

@@ -1,35 +1,43 @@
-# RAW RP — site + panel admin (version locale)
+# RAW RP — site + panel admin
 
-## Ouvrir le site
-Double-clique sur **index.html**. Ça s'ouvre dans ton navigateur, sans rien installer.
+Site en ligne : https://julienred.github.io/raw-RPSite/
+(à activer une fois : dépôt › Settings › Pages › Deploy from a branch › `main` › `/(root)` › Save)
 
 ## Modifier le site
-1. Clique sur la **petite étoile ★** en haut à droite du logo RAW (ou ouvre directement **admin.html**).
-2. Première fois : choisis un mot de passe (6 caractères minimum). Ensuite il te sera demandé à chaque ouverture.
-3. Choisis une partie à gauche, modifie les champs : l'aperçu à droite change en direct.
-4. Clique sur **Enregistrer**, puis rafraîchis le site (F5) : les changements sont là.
+1. Clique sur la **petite étoile ★** en haut à droite du logo RAW (ou ouvre `admin.html`).
+2. Entre le mot de passe admin.
+3. Modifie ce que tu veux : l'aperçu change en direct.
+4. Clique sur **Publier** : le site est mis à jour **pour tout le monde** d'ici 1 à 2 minutes.
 
-Pour sortir du panel : bouton **Déconnexion** en haut à droite.
+Bouton **Déconnexion** en haut à droite. Flèches ↶ ↷ pour annuler. Ctrl+S pour publier.
+Mise en forme : `*texte*` = en couleur, `**texte**` = gras.
 
-Mise en forme : `*texte*` = en couleur, `**texte**` = gras. Flèches ↶ ↷ (ou Ctrl+Z) pour annuler. Ctrl+S pour enregistrer.
+## Première connexion (une seule fois)
+Le panel demande un **jeton GitHub** (il permet de publier), puis tu choisis :
+- un **mot de passe admin** (12 caractères minimum), le même sur tous les appareils ;
+- une **phrase secrète** (20 caractères minimum) pour « Mot de passe oublié » ;
+- un **indice** facultatif (visible par tous, donc ne mets pas la réponse).
 
-## Où sont enregistrées les modifications ?
-- **Enregistrer** les garde dans ton navigateur : le site ouvert **sur ce PC, dans ce navigateur** les affiche.
-- Pour les écrire dans les fichiers du dossier (indispensable avant de mettre le site sur GitHub) :
-  - **Chrome ou Edge** : bandeau en haut du panel › **Relier le dossier du site**, choisis ce dossier. Ensuite chaque « Enregistrer » met à jour `content.js` et range tes images dans `images/`.
-  - **Autre navigateur** : menu **⋯** › **Télécharger content.js**, puis remplace le `content.js` de ce dossier par celui téléchargé.
+Créer le jeton : github.com › Settings › Developer settings › Fine-grained tokens › Generate new token.
+Accès : *Only select repositories* › `raw-RPSite`. Permission : **Contents : Read and write**, rien d'autre. Expiration : la plus longue possible.
+
+## Mot de passe oublié
+Sur l'écran de connexion › **Mot de passe oublié ?** › entre ta phrase secrète (majuscules, accents et ponctuation ne comptent pas) › choisis un nouveau mot de passe. Sans la phrase, impossible de réinitialiser.
+
+## Sécurité : comment ça marche
+- Le jeton GitHub est enregistré dans `admin.json`, **chiffré deux fois** : une copie avec ton mot de passe, une avec ta phrase secrète (AES-256, clé dérivée par PBKDF2, 600 000 tours). Sans l'un des deux, ce fichier est inutilisable.
+- Le dépôt est public : quelqu'un pourrait récupérer `admin.json` et essayer des milliers de mots de passe sur son ordinateur. Ça reste impraticable **si le mot de passe et la phrase sont longs et pas devinables**. N'utilise pas un mot de passe que tu as déjà ailleurs.
+- Le jeton ne peut modifier **que ce dépôt**. S'il y a un doute : supprime-le sur GitHub (Fine-grained tokens), crée-en un nouveau, puis menu ⋯ › **Remplacer le jeton GitHub**.
+- Menu ⋯ : changer le mot de passe, changer la phrase secrète, historique des versions (chaque publication est gardée sur GitHub et peut être restaurée).
+- Quand le jeton expire, le panel te demande d'en coller un nouveau.
 
 ## Fichiers
 | Fichier | Rôle |
 |---|---|
 | `index.html`, `style.css`, `script.js` | Le site |
-| `content.js` | Tout le contenu du site (écrit par le panel admin) |
-| `defaults.js` | Contenu de secours |
+| `content.js` | Tout le contenu du site (écrit par le panel) |
+| `admin.json` | Accès admin chiffré (créé à la première connexion) |
 | `admin.html`, `admin.css`, `admin.js` | Le panel admin |
-| `images/` | Le logo, l'icône d'onglet et tes images |
-
-## En ligne (GitHub Pages)
-Adresse du site : https://julienred.github.io/raw-RPSite/
-Pour l'activer : dépôt › Settings › Pages › Deploy from a branch › branche `main`, dossier `/(root)` › Save.
-Pour mettre à jour le site en ligne : modifie en local, puis renvoie `content.js` (et `images/`) dans le dépôt.
-Attention : en ligne, le panel n'enregistre que dans le navigateur de la personne qui l'utilise, il ne modifie pas le site pour les autres. Pour mettre le site à jour, tu modifies en local puis tu renvoies `content.js` (et `images/`) sur GitHub. Le mot de passe protège seulement l'accès au panel sur ton appareil : ce n'est pas une vraie sécurité de serveur.
+| `depot.js` | Nom du dépôt GitHub utilisé par le panel |
+| `defaults.js` | Contenu de secours |
+| `images/` | Logo, icône et images envoyées depuis le panel |

@@ -514,13 +514,21 @@ if (PREVIEW) {
   render(normalize(null));
   window.parent.postMessage({ type: 'rawrp:ready' }, '*');
 } else {
-  let data = window.RAWRP_CONTENT || null;
-  try {
-    const local = JSON.parse(localStorage.getItem('rawrp-contenu') || 'null');
-    if (local && (local._maj || 0) > ((data && data._maj) || 0)) data = local;
-  } catch (e) {}
-  render(normalize(data));
-  onScroll();
-  if (location.hash) { const el = document.querySelector(location.hash); if (el) el.scrollIntoView(); }
+  // content.js est chargé avec un numéro unique pour toujours avoir la dernière version publiée
+  const start = () => {
+    let data = window.RAWRP_CONTENT || null;
+    try {
+      const local = JSON.parse(localStorage.getItem('rawrp-contenu') || 'null');
+      if (local && (local._maj || 0) > ((data && data._maj) || 0)) data = local;
+    } catch (e) {}
+    render(normalize(data));
+    onScroll();
+    if (location.hash) { const el = document.querySelector(location.hash); if (el) el.scrollIntoView(); }
+  };
+  const sc = document.createElement('script');
+  sc.src = 'content.js?v=' + Date.now();
+  sc.onload = start;
+  sc.onerror = start;
+  document.head.appendChild(sc);
 }
 })();
