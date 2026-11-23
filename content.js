@@ -1,4 +1,4 @@
-/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 04:39:26.
+/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 04:48:32.
    Pour modifier le site, passe par le panel admin (étoile du logo). */
 window.RAWRP_CONTENT = {
   "meta": {
@@ -68,7 +68,7 @@ window.RAWRP_CONTENT = {
     "statutOuvert": "SERVEUR OUVERT",
     "lieu": "LOS SANTOS, SAN ANDREAS",
     "scene": "centre",
-    "image": "images/fond-capture.webp"
+    "image": ""
   },
   "univers": {
     "kicker": "EXPLORE LES POSSIBILITÉS",
@@ -251,7 +251,12 @@ window.RAWRP_CONTENT = {
     "kicker": "INSTANTS DE VIE",
     "titre": "LA VILLE\n*EN IMAGES.*",
     "intro": "Un aperçu de l'ambiance de Los Santos. Utilise les flèches, le clavier ou glisse sur mobile.",
-    "images": []
+    "images": [
+      {
+        "src": "images/1795405263142-p1.webp",
+        "titre": "PREMIUM DELUX MOTORSPORT"
+      }
+    ]
   },
   "reseaux": {
     "kicker": "RESTONS CONNECTÉS",
@@ -307,5 +312,5 @@ window.RAWRP_CONTENT = {
     "retour": "RETOUR EN HAUT",
     "boutonAdmin": true
   },
-  "_maj": 1795405626352
+  "_maj": 1795405712994
 };
