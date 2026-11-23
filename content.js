@@ -1,4 +1,5 @@
-/* Contenu du site RAW RP — modifiable via admin.html. */
+/* Contenu du site RAW RP — publié depuis le panel admin le 23/11/2026 04:32:41.
+   Pour modifier le site, passe par le panel admin (étoile du logo). */
 window.RAWRP_CONTENT = {
   "meta": {
     "titre": "RAW RP — Écris ta légende",
@@ -13,7 +14,7 @@ window.RAWRP_CONTENT = {
   "marque": {
     "image": "images/logo.png",
     "logo": "R★W",
-    "sousTitre": "ROLEPLAY",
+    "sousTitre": "",
     "footer": "RAW★RP"
   },
   "liens": {
@@ -306,5 +307,5 @@ window.RAWRP_CONTENT = {
     "retour": "RETOUR EN HAUT",
     "boutonAdmin": true
   },
-  "_maj": 0
+  "_maj": 1795404761271
 };
